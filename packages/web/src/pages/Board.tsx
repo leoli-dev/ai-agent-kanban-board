@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DndContext,
@@ -12,9 +12,13 @@ import {
 import { KANBAN_COLUMNS, type Project, type Task, type TaskStatus } from '@akb/shared';
 import { api } from '../lib/api';
 import { useWsTopics } from '../lib/ws';
+import { useT } from '../lib/i18n';
+import { Loading, LoadError } from '../components/QueryState';
 import { KanbanColumn } from '../components/KanbanColumn';
+import { IconBoard, IconPlus } from '../components/icons';
 
 export default function Board() {
+  const t = useT();
   const { projectId } = useParams();
   const queryClient = useQueryClient();
   const [liveTaskIds, setLiveTaskIds] = useState<Set<string>>(new Set());
@@ -25,10 +29,9 @@ export default function Board() {
   });
 
   const tasksKey = projectId ? ['tasks', projectId] : ['tasks', 'all'];
-  const { data: tasks = [] } = useQuery({
+  const { data: tasks = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: tasksKey,
-    queryFn: () =>
-      api.get<Task[]>(projectId ? `/api/projects/${projectId}/tasks` : '/api/tasks'),
+    queryFn: () => api.get<Task[]>(projectId ? `/api/projects/${projectId}/tasks` : '/api/tasks'),
   });
 
   const boardTopics = useMemo(() => {
@@ -39,7 +42,7 @@ export default function Board() {
   useWsTopics(boardTopics, (msg) => {
     if (msg.type === 'task.updated') {
       queryClient.setQueryData<Task[]>(tasksKey, (old) =>
-        old ? old.map((t) => (t.id === msg.task.id ? msg.task : t)) : old,
+        old ? old.map((x) => (x.id === msg.task.id ? msg.task : x)) : old,
       );
     } else if (msg.type === 'tasks.created') {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
@@ -60,7 +63,7 @@ export default function Board() {
     onMutate: async ({ taskId, status }) => {
       await queryClient.cancelQueries({ queryKey: tasksKey });
       queryClient.setQueryData<Task[]>(tasksKey, (old) =>
-        old ? old.map((t) => (t.id === taskId ? { ...t, status } : t)) : old,
+        old ? old.map((x) => (x.id === taskId ? { ...x, status } : x)) : old,
       );
     },
     onError: () => queryClient.invalidateQueries({ queryKey: tasksKey }),
@@ -75,33 +78,41 @@ export default function Board() {
     const taskId = String(ev.active.id);
     const target = ev.over?.id as TaskStatus | undefined;
     if (!target) return;
-    const task = tasks.find((t) => t.id === taskId);
+    const task = tasks.find((x) => x.id === taskId);
     if (task && task.status !== target) move.mutate({ taskId, status: target });
   }
 
   const projectNames = useMemo(() => new Map(projects.map((p) => [p.id, p.name])), [projects]);
-  const visibleTasks = tasks.filter((t) => t.status !== 'failed' && t.status !== 'blocked');
-  const troubled = tasks.filter((t) => t.status === 'failed' || t.status === 'blocked');
+  const visibleTasks = tasks.filter((x) => x.status !== 'failed' && x.status !== 'blocked');
+  const troubled = tasks.filter((x) => x.status === 'failed' || x.status === 'blocked');
   const currentProject = projectId ? projects.find((p) => p.id === projectId) : null;
+
+  if (isLoading) return <Loading />;
+  if (isError) return <LoadError error={error} onRetry={refetch} />;
 
   return (
     <div className="flex h-full flex-col p-3 sm:p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h1 className="text-base font-semibold">
-          {currentProject ? `${currentProject.name} — Board` : 'Board'}
+        <h1 className="text-base font-semibold tracking-tight">
+          {currentProject ? `${currentProject.name}` : t('board.title')}
         </h1>
         {troubled.length > 0 && (
-          <span className="rounded-full bg-rose-900/60 px-2.5 py-1 text-xs text-rose-300">
-            {troubled.length} failed/blocked
+          <span className="rounded-md bg-red-500/15 px-2.5 py-1 font-mono text-xs text-red-300 tabular">
+            {t('board.failedBlocked', { n: troubled.length })}
           </span>
         )}
       </div>
 
       {tasks.length === 0 ? (
         <div className="flex flex-1 items-center justify-center">
-          <p className="text-sm text-slate-500">
-            No tasks yet — approve a plan to populate the board.
-          </p>
+          <div className="card rise-in max-w-sm border-dashed p-10 text-center">
+            <IconBoard className="mx-auto mb-3 text-ink-500" width={30} height={30} />
+            <p className="font-medium text-ink-200">{t('board.empty.title')}</p>
+            <p className="mt-1 text-sm text-ink-400">{t('board.empty.body')}</p>
+            <Link to="/projects/new" className="btn btn-primary mx-auto mt-5 px-4 py-2 text-sm">
+              <IconPlus width={15} height={15} /> {t('board.empty.cta')}
+            </Link>
+          </div>
         </div>
       ) : (
         <DndContext sensors={sensors} onDragEnd={onDragEnd}>
@@ -110,8 +121,8 @@ export default function Board() {
               <KanbanColumn
                 key={col.status}
                 status={col.status}
-                label={col.label}
-                tasks={visibleTasks.filter((t) => t.status === col.status)}
+                label={t(`task.${col.status}`)}
+                tasks={visibleTasks.filter((x) => x.status === col.status)}
                 projectNames={projectNames}
                 liveTaskIds={liveTaskIds}
               />
@@ -119,14 +130,14 @@ export default function Board() {
           </div>
           {troubled.length > 0 && (
             <div className="mt-2 flex gap-2 overflow-x-auto">
-              {troubled.map((t) => (
-                <a
-                  key={t.id}
-                  href={`/tasks/${t.id}`}
-                  className="shrink-0 rounded-lg border border-rose-900 bg-rose-950/40 px-3 py-1.5 text-xs text-rose-300"
+              {troubled.map((x) => (
+                <Link
+                  key={x.id}
+                  to={`/tasks/${x.id}`}
+                  className="shrink-0 rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-1.5 text-xs text-red-300 transition-colors hover:bg-red-950/70"
                 >
-                  ⚠ {t.title}
-                </a>
+                  ⚠ {x.title}
+                </Link>
               ))}
             </div>
           )}

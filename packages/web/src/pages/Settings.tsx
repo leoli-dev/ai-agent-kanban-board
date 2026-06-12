@@ -8,18 +8,56 @@ import {
   type ProviderProfile,
   type Settings as AppSettings,
 } from '@akb/shared';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
+import { LANGS, useI18n, useT } from '../lib/i18n';
+import { IconCheck, IconPlus, IconX } from '../components/icons';
 
 export default function Settings() {
+  const t = useT();
   return (
-    <div className="mx-auto max-w-3xl space-y-8 p-4 sm:p-6">
-      <h1 className="text-lg font-semibold">Settings</h1>
+    <div className="mx-auto max-w-3xl space-y-10 p-4 sm:p-6">
+      <h1 className="text-xl font-semibold tracking-tight">{t('settings.title')}</h1>
+      <LanguageSection />
       <ProvidersSection />
       <RolesSection />
       <SecretsSection />
       <PipelineSection />
       <NotificationsSection />
     </div>
+  );
+}
+
+function SectionHeader({ title, help }: { title: string; help?: string }) {
+  return (
+    <div className="mb-3">
+      <h2 className="text-[15px] font-semibold text-ink-100">{title}</h2>
+      {help && <p className="mt-1 max-w-prose text-xs leading-relaxed text-ink-400">{help}</p>}
+    </div>
+  );
+}
+
+/* -------------------------------- Language ------------------------------- */
+
+function LanguageSection() {
+  const t = useT();
+  const { lang, setLang } = useI18n();
+  return (
+    <section>
+      <SectionHeader title={t('settings.language')} help={t('settings.language.help')} />
+      <div className="flex gap-1.5">
+        {LANGS.map((l) => (
+          <button
+            key={l.id}
+            onClick={() => setLang(l.id)}
+            className={`btn px-4 py-2 text-sm ${
+              lang === l.id ? 'btn-primary' : 'btn-ghost'
+            }`}
+          >
+            {l.label}
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -38,14 +76,91 @@ const emptyDraft = (): ProfileDraft => ({
   name: '',
   engine: 'claude-code',
   modelLabel: '',
-  env: [{ key: 'ANTHROPIC_BASE_URL', value: '' }],
+  env: [{ key: '', value: '' }],
   notes: '',
 });
 
+/** Quick-start templates for common providers. */
+const PRESETS: { id: string; label: string; draft: () => ProfileDraft }[] = [
+  {
+    id: 'anthropic',
+    label: 'Anthropic (Claude)',
+    draft: () => ({
+      ...emptyDraft(),
+      name: 'anthropic',
+      env: [{ key: 'ANTHROPIC_API_KEY', value: '${SECRET:ANTHROPIC_API_KEY}' }],
+    }),
+  },
+  {
+    id: 'deepseek',
+    label: 'DeepSeek (via Claude Code)',
+    draft: () => ({
+      ...emptyDraft(),
+      name: 'deepseek',
+      modelLabel: 'deepseek-v4-pro',
+      env: [
+        { key: 'ANTHROPIC_BASE_URL', value: 'https://api.deepseek.com/anthropic' },
+        { key: 'ANTHROPIC_AUTH_TOKEN', value: '${SECRET:DEEPSEEK_API_KEY}' },
+        { key: 'ANTHROPIC_MODEL', value: 'deepseek-v4-pro[1m]' },
+        { key: 'ANTHROPIC_DEFAULT_OPUS_MODEL', value: 'deepseek-v4-pro[1m]' },
+        { key: 'ANTHROPIC_DEFAULT_SONNET_MODEL', value: 'deepseek-v4-pro[1m]' },
+        { key: 'ANTHROPIC_DEFAULT_HAIKU_MODEL', value: 'deepseek-v4-flash' },
+        { key: 'CLAUDE_CODE_SUBAGENT_MODEL', value: 'deepseek-v4-flash' },
+        { key: 'CLAUDE_CODE_EFFORT_LEVEL', value: 'max' },
+        { key: 'API_TIMEOUT_MS', value: '3000000' },
+      ],
+    }),
+  },
+  {
+    id: 'minimax',
+    label: 'MiniMax (via Claude Code)',
+    draft: () => ({
+      ...emptyDraft(),
+      name: 'minimax',
+      env: [
+        { key: 'ANTHROPIC_BASE_URL', value: 'https://api.minimax.io/anthropic' },
+        { key: 'ANTHROPIC_AUTH_TOKEN', value: '${SECRET:MINIMAX_API_KEY}' },
+        { key: 'API_TIMEOUT_MS', value: '3000000' },
+      ],
+    }),
+  },
+  {
+    id: 'local',
+    label: 'Local LLM (ollama / omlx / mlx)',
+    draft: () => ({
+      ...emptyDraft(),
+      name: 'local-llm',
+      env: [
+        { key: 'ANTHROPIC_BASE_URL', value: 'http://127.0.0.1:8000' },
+        { key: 'ANTHROPIC_AUTH_TOKEN', value: 'local' },
+        { key: 'ANTHROPIC_MODEL', value: 'your-model-name' },
+        { key: 'API_TIMEOUT_MS', value: '3000000' },
+      ],
+    }),
+  },
+  {
+    id: 'codex',
+    label: 'Codex (OpenAI)',
+    draft: () => ({
+      ...emptyDraft(),
+      name: 'codex',
+      engine: 'codex',
+      modelLabel: 'gpt-5.3-codex',
+      env: [{ key: 'CODEX_SANDBOX', value: 'workspace-write' }],
+    }),
+  },
+];
+
+interface TestOutcome {
+  ok: boolean;
+  text: string;
+}
+
 function ProvidersSection() {
+  const t = useT();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<ProfileDraft | null>(null);
-  const [testResult, setTestResult] = useState<Record<string, string>>({});
+  const [testResult, setTestResult] = useState<Record<string, TestOutcome | 'pending'>>({});
 
   const { data: providers = [] } = useQuery({
     queryKey: ['providers'],
@@ -59,7 +174,9 @@ function ProvidersSection() {
         engine: d.engine,
         modelLabel: d.modelLabel || null,
         notes: d.notes || null,
-        env: Object.fromEntries(d.env.filter((e) => e.key.trim()).map((e) => [e.key.trim(), e.value])),
+        env: Object.fromEntries(
+          d.env.filter((e) => e.key.trim()).map((e) => [e.key.trim(), e.value]),
+        ),
       };
       return d.id ? api.patch(`/api/providers/${d.id}`, body) : api.post('/api/providers', body);
     },
@@ -70,129 +187,188 @@ function ProvidersSection() {
   });
 
   const toggle = useMutation({
-    mutationFn: (p: ProviderProfile) => api.patch(`/api/providers/${p.id}`, { enabled: !p.enabled }),
+    mutationFn: (p: ProviderProfile) =>
+      api.patch(`/api/providers/${p.id}`, { enabled: !p.enabled }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['providers'] }),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/api/providers/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['providers', 'roles'] }),
-  });
-
-  const test = useMutation({
-    mutationFn: async (id: string) => ({ id, result: await api.post<{ ok: boolean; failureClass: string; resultText: string | null }>(`/api/providers/${id}/test`) }),
-    onSuccess: ({ id, result }) => {
-      setTestResult((s) => ({
-        ...s,
-        [id]: result.ok ? `✓ OK — "${result.resultText ?? ''}"`.slice(0, 80) : `✕ ${result.failureClass}: ${result.resultText ?? 'failed'}`.slice(0, 120),
-      }));
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['providers'] });
+      queryClient.invalidateQueries({ queryKey: ['roles'] });
     },
   });
 
+  async function runTest(id: string) {
+    setTestResult((s) => ({ ...s, [id]: 'pending' }));
+    try {
+      const result = await api.post<{ ok: boolean; failureClass: string; resultText: string | null }>(
+        `/api/providers/${id}/test`,
+      );
+      setTestResult((s) => ({
+        ...s,
+        [id]: result.ok
+          ? { ok: true, text: `OK — "${(result.resultText ?? '').slice(0, 60)}"` }
+          : { ok: false, text: `${result.failureClass}: ${(result.resultText ?? 'failed').slice(0, 120)}` },
+      }));
+    } catch (e) {
+      setTestResult((s) => ({
+        ...s,
+        [id]: { ok: false, text: e instanceof ApiError ? `HTTP ${e.status}: ${e.message}` : String(e) },
+      }));
+    }
+    queryClient.invalidateQueries({ queryKey: ['providers'] });
+  }
+
   return (
     <section>
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-300">AI Providers</h2>
-        <button
-          onClick={() => setDraft(emptyDraft())}
-          className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500"
-        >
-          + Add provider
+      <div className="flex items-start justify-between gap-3">
+        <SectionHeader title={t('settings.providers')} help={t('settings.providers.help')} />
+        <button onClick={() => setDraft(emptyDraft())} className="btn btn-primary shrink-0 px-3 py-1.5 text-xs">
+          <IconPlus width={13} height={13} /> {t('settings.providers.add')}
         </button>
       </div>
 
       <ul className="space-y-2">
-        {providers.map((p) => (
-          <li key={p.id} className="rounded-xl border border-slate-800 bg-slate-900 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="flex items-center gap-2 text-sm font-medium text-slate-100">
-                  {p.name}
-                  <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">{p.engine}</span>
-                  {p.modelLabel && (
-                    <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">{p.modelLabel}</span>
-                  )}
-                </p>
-                {!p.enabled && (
-                  <p className="mt-0.5 text-xs text-rose-400">disabled{p.disabledReason ? ` — ${p.disabledReason}` : ''}</p>
-                )}
-                {p.enabled && p.cooldownUntil && p.cooldownUntil > Date.now() && (
-                  <p className="mt-0.5 text-xs text-amber-400">
-                    cooling down until {new Date(p.cooldownUntil).toLocaleTimeString()}
+        {providers.map((p) => {
+          const result = testResult[p.id];
+          return (
+            <li key={p.id} className="card p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink-100">
+                    {p.name}
+                    <span className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-[10px] text-ink-400">
+                      {p.engine}
+                    </span>
+                    {p.modelLabel && (
+                      <span className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-[10px] text-ink-400">
+                        {p.modelLabel}
+                      </span>
+                    )}
                   </p>
-                )}
-                {testResult[p.id] && <p className="mt-0.5 text-xs text-slate-400">{testResult[p.id]}</p>}
+                  {!p.enabled && (
+                    <p className="mt-0.5 text-xs text-red-400">
+                      {t('settings.provider.disabled')}
+                      {p.disabledReason ? ` — ${p.disabledReason}` : ''}
+                    </p>
+                  )}
+                  {p.enabled && p.cooldownUntil && p.cooldownUntil > Date.now() && (
+                    <p className="mt-0.5 text-xs text-accent-300">
+                      {t('settings.provider.cooldown', {
+                        time: new Date(p.cooldownUntil).toLocaleTimeString(),
+                      })}
+                    </p>
+                  )}
+                </div>
+                <div className="flex shrink-0 gap-1.5">
+                  <button
+                    onClick={() => runTest(p.id)}
+                    disabled={result === 'pending'}
+                    title={t('settings.provider.testHint')}
+                    className="btn btn-ghost px-2.5 py-1 text-xs"
+                  >
+                    {result === 'pending' ? (
+                      <>
+                        <span className="h-3 w-3 animate-spin rounded-full border border-ink-500 border-t-accent-400" />
+                        {t('common.testing')}
+                      </>
+                    ) : (
+                      t('common.test')
+                    )}
+                  </button>
+                  <button
+                    onClick={() =>
+                      setDraft({
+                        id: p.id,
+                        name: p.name,
+                        engine: p.engine,
+                        modelLabel: p.modelLabel ?? '',
+                        env: Object.entries(p.env).map(([key, value]) => ({ key, value })),
+                        notes: p.notes ?? '',
+                      })
+                    }
+                    className="btn btn-ghost px-2.5 py-1 text-xs"
+                  >
+                    {t('common.edit')}
+                  </button>
+                  <button onClick={() => toggle.mutate(p)} className="btn btn-ghost px-2.5 py-1 text-xs">
+                    {p.enabled ? t('common.disable') : t('common.enable')}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm(t('settings.provider.deleteConfirm', { name: p.name })))
+                        remove.mutate(p.id);
+                    }}
+                    className="btn btn-danger px-2 py-1 text-xs"
+                  >
+                    <IconX width={12} height={12} />
+                  </button>
+                </div>
               </div>
-              <div className="flex shrink-0 gap-1.5">
-                <button
-                  onClick={() => test.mutate(p.id)}
-                  disabled={test.isPending}
-                  className="rounded-md bg-slate-800 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-700 disabled:opacity-40"
+              {result && result !== 'pending' && (
+                <p
+                  className={`mt-2 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-mono text-xs ${
+                    result.ok ? 'bg-teal-500/10 text-teal-300' : 'bg-red-500/10 text-red-300'
+                  }`}
                 >
-                  {test.isPending && test.variables === p.id ? 'Testing…' : 'Test'}
-                </button>
-                <button
-                  onClick={() =>
-                    setDraft({
-                      id: p.id,
-                      name: p.name,
-                      engine: p.engine,
-                      modelLabel: p.modelLabel ?? '',
-                      env: Object.entries(p.env).map(([key, value]) => ({ key, value })),
-                      notes: p.notes ?? '',
-                    })
-                  }
-                  className="rounded-md bg-slate-800 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-700"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => toggle.mutate(p)}
-                  className="rounded-md bg-slate-800 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-700"
-                >
-                  {p.enabled ? 'Disable' : 'Enable'}
-                </button>
-                <button
-                  onClick={() => {
-                    if (confirm(`Delete provider "${p.name}"?`)) remove.mutate(p.id);
-                  }}
-                  className="rounded-md bg-rose-900/60 px-2.5 py-1 text-xs text-rose-300 hover:bg-rose-800"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          </li>
-        ))}
+                  {result.ok ? <IconCheck width={13} height={13} /> : <IconX width={13} height={13} />}
+                  {result.text}
+                </p>
+              )}
+            </li>
+          );
+        })}
         {providers.length === 0 && (
-          <p className="rounded-xl border border-dashed border-slate-700 p-4 text-center text-sm text-slate-500">
-            No providers yet. Add Claude, Codex, DeepSeek, or a local endpoint.
+          <p className="card border-dashed p-5 text-center text-sm text-ink-500">
+            {t('settings.providers.empty')}
           </p>
         )}
       </ul>
 
       {draft && (
-        <div className="mt-3 rounded-xl border border-sky-900 bg-slate-900 p-4">
-          <h3 className="mb-3 text-sm font-semibold text-slate-200">
-            {draft.id ? 'Edit provider' : 'New provider'}
+        <div className="card mt-3 border-accent-500/30 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-ink-100">
+            {draft.id ? t('settings.provider.edit') : t('settings.provider.new')}
           </h3>
+
+          {!draft.id && (
+            <div className="mb-4">
+              <p className="mb-1.5 text-xs text-ink-400">{t('settings.provider.preset')}</p>
+              <div className="flex flex-wrap gap-1.5">
+                <button onClick={() => setDraft(emptyDraft())} className="btn btn-ghost px-2.5 py-1 text-xs">
+                  {t('settings.provider.preset.custom')}
+                </button>
+                {PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={() => setDraft(preset.draft())}
+                    className="btn btn-ghost px-2.5 py-1 text-xs"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-xs text-slate-400">
-              Name
+            <label className="block text-xs text-ink-400">
+              {t('settings.provider.name')}
               <input
                 value={draft.name}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                placeholder="deepseek-via-claude"
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm text-slate-100 outline-none focus:border-sky-500"
+                placeholder="deepseek"
+                className="input-base mt-1"
               />
             </label>
-            <label className="block text-xs text-slate-400">
-              Engine
+            <label className="block text-xs text-ink-400">
+              {t('settings.provider.engine')}
               <select
                 value={draft.engine}
                 onChange={(e) => setDraft({ ...draft, engine: e.target.value as EngineId })}
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm text-slate-100 outline-none focus:border-sky-500"
+                className="input-base mt-1"
               >
                 {ENGINES.map((e) => (
                   <option key={e} value={e}>
@@ -201,68 +377,79 @@ function ProvidersSection() {
                 ))}
               </select>
             </label>
-            <label className="block text-xs text-slate-400 sm:col-span-2">
-              Model label (codex: passed as -m)
-              <input
-                value={draft.modelLabel}
-                onChange={(e) => setDraft({ ...draft, modelLabel: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm text-slate-100 outline-none focus:border-sky-500"
-              />
-            </label>
           </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-ink-500">
+            {t('settings.provider.engine.help')}
+          </p>
 
-          <p className="mb-1 mt-3 text-xs text-slate-400">
-            Environment variables — values may use{' '}
-            <code className="rounded bg-slate-800 px-1">{'${SECRET:NAME}'}</code>
+          <label className="mt-3 block text-xs text-ink-400">
+            {t('settings.provider.model')}
+            <input
+              value={draft.modelLabel}
+              onChange={(e) => setDraft({ ...draft, modelLabel: e.target.value })}
+              className="input-base mt-1 font-mono"
+            />
+          </label>
+          <p className="mt-1.5 text-[11px] text-ink-500">{t('settings.provider.model.help')}</p>
+
+          <p className="mb-1 mt-4 text-xs font-medium text-ink-300">{t('settings.provider.env')}</p>
+          <p className="mb-2 text-[11px] leading-relaxed text-ink-500">
+            {t('settings.provider.env.help')}
           </p>
           {draft.env.map((row, i) => (
             <div key={i} className="mb-1.5 flex gap-1.5">
               <input
                 value={row.key}
                 onChange={(e) =>
-                  setDraft({ ...draft, env: draft.env.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)) })
+                  setDraft({
+                    ...draft,
+                    env: draft.env.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)),
+                  })
                 }
                 placeholder="ANTHROPIC_BASE_URL"
-                className="w-2/5 rounded-lg border border-slate-700 bg-slate-950 p-2 font-mono text-xs text-slate-100 outline-none focus:border-sky-500"
+                className="input-base w-2/5 font-mono text-xs"
               />
               <input
                 value={row.value}
                 onChange={(e) =>
-                  setDraft({ ...draft, env: draft.env.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)) })
+                  setDraft({
+                    ...draft,
+                    env: draft.env.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)),
+                  })
                 }
-                placeholder="value or ${SECRET:KEY_NAME}"
-                className="flex-1 rounded-lg border border-slate-700 bg-slate-950 p-2 font-mono text-xs text-slate-100 outline-none focus:border-sky-500"
+                placeholder={'value or ${SECRET:KEY_NAME}'}
+                className="input-base flex-1 font-mono text-xs"
               />
               <button
                 onClick={() => setDraft({ ...draft, env: draft.env.filter((_, j) => j !== i) })}
-                className="px-2 text-slate-500 hover:text-rose-400"
+                className="px-2 text-ink-500 transition-colors hover:text-red-400"
               >
-                ✕
+                <IconX width={13} height={13} />
               </button>
             </div>
           ))}
           <button
             onClick={() => setDraft({ ...draft, env: [...draft.env, { key: '', value: '' }] })}
-            className="text-xs text-sky-400 hover:underline"
+            className="text-xs text-accent-300 hover:underline"
           >
-            + add variable
+            + {t('settings.provider.addVar')}
           </button>
 
           <div className="mt-4 flex gap-2">
             <button
               onClick={() => save.mutate(draft)}
               disabled={!draft.name.trim() || save.isPending}
-              className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-40"
+              className="btn btn-primary px-4 py-2 text-sm"
             >
-              Save
+              {t('common.save')}
             </button>
-            <button
-              onClick={() => setDraft(null)}
-              className="rounded-lg bg-slate-800 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700"
-            >
-              Cancel
+            <button onClick={() => setDraft(null)} className="btn btn-ghost px-4 py-2 text-sm">
+              {t('common.cancel')}
             </button>
           </div>
+          {save.isError && (
+            <p className="mt-2 text-xs text-red-300">{String((save.error as Error).message)}</p>
+          )}
         </div>
       )}
     </section>
@@ -272,6 +459,7 @@ function ProvidersSection() {
 /* --------------------------------- Roles --------------------------------- */
 
 function RolesSection() {
+  const t = useT();
   const queryClient = useQueryClient();
   const { data: providers = [] } = useQuery({
     queryKey: ['providers'],
@@ -292,24 +480,30 @@ function RolesSection() {
 
   return (
     <section>
-      <h2 className="mb-1 text-sm font-semibold text-slate-300">Role → Provider priority</h2>
-      <p className="mb-3 text-xs text-slate-500">
-        Each agent role tries providers in order; on quota/auth failure it falls back to the next.
-      </p>
+      <SectionHeader title={t('settings.roles')} help={t('settings.roles.help')} />
       <div className="space-y-2">
         {AGENT_ROLES.map((role) => {
           const entry = roles.find((r) => r.role === role);
           const ids = entry?.profileIds ?? [];
           const unused = providers.filter((p) => !ids.includes(p.id));
           return (
-            <div key={role} className="rounded-xl border border-slate-800 bg-slate-900 p-3">
-              <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">{role}</p>
-              {ids.length === 0 && <p className="mb-1 text-xs text-slate-600">no providers assigned</p>}
+            <div key={role} className="card p-3">
+              <p className="text-[13px] font-semibold text-ink-200">{t(`role.${role}`)}</p>
+              <p className="mb-2 mt-0.5 text-[11px] leading-relaxed text-ink-500">
+                {t(`role.${role}.hint`)}
+              </p>
+              {ids.length === 0 && (
+                <p className="mb-1 text-xs italic text-ink-600">{t('settings.roles.none')}</p>
+              )}
               <ol className="space-y-1">
                 {ids.map((id, i) => (
-                  <li key={id} className="flex items-center gap-2 rounded-lg bg-slate-800/60 px-2.5 py-1.5">
-                    <span className="w-4 text-center text-[10px] text-slate-500">{i + 1}</span>
-                    <span className="flex-1 truncate text-xs text-slate-200">{byId.get(id)?.name ?? id}</span>
+                  <li key={id} className="flex items-center gap-2 rounded-lg bg-ink-850 px-2.5 py-1.5">
+                    <span className="w-4 text-center font-mono text-[10px] text-ink-500 tabular">
+                      {i + 1}
+                    </span>
+                    <span className="flex-1 truncate text-xs text-ink-200">
+                      {byId.get(id)?.name ?? id}
+                    </span>
                     <button
                       disabled={i === 0}
                       onClick={() => {
@@ -317,7 +511,7 @@ function RolesSection() {
                         [next[i - 1], next[i]] = [next[i]!, next[i - 1]!];
                         setOrder.mutate({ role, profileIds: next });
                       }}
-                      className="px-1 text-slate-500 hover:text-slate-200 disabled:opacity-20"
+                      className="px-1 text-ink-500 transition-colors hover:text-ink-200 disabled:opacity-20"
                     >
                       ↑
                     </button>
@@ -328,15 +522,15 @@ function RolesSection() {
                         [next[i], next[i + 1]] = [next[i + 1]!, next[i]!];
                         setOrder.mutate({ role, profileIds: next });
                       }}
-                      className="px-1 text-slate-500 hover:text-slate-200 disabled:opacity-20"
+                      className="px-1 text-ink-500 transition-colors hover:text-ink-200 disabled:opacity-20"
                     >
                       ↓
                     </button>
                     <button
                       onClick={() => setOrder.mutate({ role, profileIds: ids.filter((x) => x !== id) })}
-                      className="px-1 text-slate-500 hover:text-rose-400"
+                      className="px-1 text-ink-500 transition-colors hover:text-red-400"
                     >
-                      ✕
+                      <IconX width={12} height={12} />
                     </button>
                   </li>
                 ))}
@@ -347,9 +541,9 @@ function RolesSection() {
                   onChange={(e) => {
                     if (e.target.value) setOrder.mutate({ role, profileIds: [...ids, e.target.value] });
                   }}
-                  className="mt-2 rounded-lg border border-slate-700 bg-slate-950 p-1.5 text-xs text-slate-300 outline-none"
+                  className="input-base mt-2 w-auto py-1.5 text-xs"
                 >
-                  <option value="">+ add provider…</option>
+                  <option value="">+ {t('settings.roles.add')}</option>
                   {unused.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
@@ -368,6 +562,7 @@ function RolesSection() {
 /* -------------------------------- Secrets -------------------------------- */
 
 function SecretsSection() {
+  const t = useT();
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [value, setValue] = useState('');
@@ -392,17 +587,19 @@ function SecretsSection() {
 
   return (
     <section>
-      <h2 className="mb-1 text-sm font-semibold text-slate-300">Secrets</h2>
-      <p className="mb-3 text-xs text-slate-500">
-        API keys stored in <code className="rounded bg-slate-800 px-1">data/secrets.json</code> (never in the
-        database). Reference them in provider env as {'${SECRET:NAME}'}.
-      </p>
+      <SectionHeader title={t('settings.secrets')} help={t('settings.secrets.help')} />
       <div className="flex flex-wrap gap-1.5">
         {(data?.names ?? []).map((n) => (
-          <span key={n} className="flex items-center gap-1.5 rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-300">
-            🔑 {n}
-            <button onClick={() => remove.mutate(n)} className="text-slate-500 hover:text-rose-400">
-              ✕
+          <span
+            key={n}
+            className="flex items-center gap-1.5 rounded-lg bg-ink-800 px-3 py-1 font-mono text-xs text-ink-300"
+          >
+            {n}
+            <button
+              onClick={() => remove.mutate(n)}
+              className="text-ink-500 transition-colors hover:text-red-400"
+            >
+              <IconX width={11} height={11} />
             </button>
           </span>
         ))}
@@ -412,21 +609,21 @@ function SecretsSection() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="DEEPSEEK_API_KEY"
-          className="w-2/5 rounded-lg border border-slate-700 bg-slate-950 p-2 font-mono text-xs text-slate-100 outline-none focus:border-sky-500"
+          className="input-base w-2/5 font-mono text-xs"
         />
         <input
           value={value}
           onChange={(e) => setValue(e.target.value)}
           type="password"
           placeholder="sk-…"
-          className="flex-1 rounded-lg border border-slate-700 bg-slate-950 p-2 font-mono text-xs text-slate-100 outline-none focus:border-sky-500"
+          className="input-base flex-1 font-mono text-xs"
         />
         <button
           onClick={() => save.mutate()}
           disabled={!name.trim() || !value || save.isPending}
-          className="rounded-lg bg-sky-600 px-3 py-2 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-40"
+          className="btn btn-primary px-3 py-2 text-xs"
         >
-          Save
+          {t('common.save')}
         </button>
       </div>
     </section>
@@ -436,6 +633,7 @@ function SecretsSection() {
 /* -------------------------------- Pipeline -------------------------------- */
 
 function PipelineSection() {
+  const t = useT();
   const queryClient = useQueryClient();
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -448,52 +646,55 @@ function PipelineSection() {
 
   if (!settings) return null;
 
-  const num = (label: string, key: keyof AppSettings, min: number, max: number) => (
-    <label className="block text-xs text-slate-400">
-      {label}
-      <input
-        type="number"
-        min={min}
-        max={max}
-        defaultValue={settings[key] as number}
-        onBlur={(e) => {
-          const v = Number(e.target.value);
-          if (!Number.isNaN(v) && v !== settings[key]) update.mutate({ [key]: v });
-        }}
-        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm text-slate-100 outline-none focus:border-sky-500"
-      />
-    </label>
+  const num = (labelKey: string, helpKey: string, key: keyof AppSettings, min: number, max: number) => (
+    <div className="card p-3">
+      <label className="block text-xs font-medium text-ink-300">
+        {t(labelKey)}
+        <input
+          type="number"
+          min={min}
+          max={max}
+          defaultValue={settings[key] as number}
+          onBlur={(e) => {
+            const v = Number(e.target.value);
+            if (!Number.isNaN(v) && v !== settings[key]) update.mutate({ [key]: v });
+          }}
+          className="input-base mt-1.5 font-mono tabular"
+        />
+      </label>
+      <p className="mt-1.5 text-[11px] leading-relaxed text-ink-500">{t(helpKey)}</p>
+    </div>
   );
 
-  const toggle = (label: string, key: keyof AppSettings, hint?: string) => (
-    <label className="flex items-center justify-between gap-3 rounded-lg bg-slate-800/50 px-3 py-2">
+  const toggle = (labelKey: string, helpKey: string, key: keyof AppSettings) => (
+    <label className="card flex items-start justify-between gap-3 p-3">
       <span>
-        <span className="block text-sm text-slate-200">{label}</span>
-        {hint && <span className="block text-xs text-slate-500">{hint}</span>}
+        <span className="block text-sm font-medium text-ink-200">{t(labelKey)}</span>
+        <span className="mt-0.5 block text-[11px] leading-relaxed text-ink-500">{t(helpKey)}</span>
       </span>
       <input
         type="checkbox"
         checked={settings[key] as boolean}
         onChange={(e) => update.mutate({ [key]: e.target.checked })}
-        className="h-4 w-4 accent-sky-500"
+        className="mt-1 h-4 w-4 accent-[#f5b942]"
       />
     </label>
   );
 
   return (
     <section>
-      <h2 className="mb-3 text-sm font-semibold text-slate-300">Pipeline</h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {num('Stuck threshold (min)', 'stuckThresholdMin', 1, 240)}
-        {num('Wall clock limit (min)', 'wallClockLimitMin', 1, 1440)}
-        {num('Max retries', 'maxRetries', 0, 10)}
-        {num('Max review bounces', 'maxBounces', 0, 10)}
-        {num('Parallel tasks', 'concurrency', 1, 4)}
-        {num('Max Q&A rounds', 'maxQaRounds', 1, 20)}
+      <SectionHeader title={t('settings.pipeline')} help={t('settings.pipeline.help')} />
+      <div className="grid gap-2 sm:grid-cols-2">
+        {num('settings.stuck', 'settings.stuck.help', 'stuckThresholdMin', 1, 240)}
+        {num('settings.wallclock', 'settings.wallclock.help', 'wallClockLimitMin', 1, 1440)}
+        {num('settings.retries', 'settings.retries.help', 'maxRetries', 0, 10)}
+        {num('settings.bounces', 'settings.bounces.help', 'maxBounces', 0, 10)}
+        {num('settings.concurrency', 'settings.concurrency.help', 'concurrency', 1, 4)}
+        {num('settings.qaRounds', 'settings.qaRounds.help', 'maxQaRounds', 1, 20)}
       </div>
-      <div className="mt-3 space-y-2">
-        {toggle('Auto review', 'autoAdvanceReview', 'Reviewer agent advances tasks out of To Review')}
-        {toggle('Auto test', 'autoAdvanceTest', 'Tester agent advances tasks out of To Test')}
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        {toggle('settings.autoReview', 'settings.autoReview.help', 'autoAdvanceReview')}
+        {toggle('settings.autoTest', 'settings.autoTest.help', 'autoAdvanceTest')}
       </div>
     </section>
   );
@@ -502,6 +703,7 @@ function PipelineSection() {
 /* ----------------------------- Notifications ----------------------------- */
 
 function NotificationsSection() {
+  const t = useT();
   const queryClient = useQueryClient();
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -515,79 +717,87 @@ function NotificationsSection() {
 
   const [smtp, setSmtp] = useState<NonNullable<AppSettings['smtp']> | null>(null);
   if (!settings) return null;
-  const smtpDraft = smtp ?? settings.smtp ?? { host: '', port: 587, secure: false, user: '', pass: '', from: '', to: '' };
+  const smtpDraft =
+    smtp ?? settings.smtp ?? { host: '', port: 587, secure: false, user: '', pass: '', from: '', to: '' };
 
-  const field = (label: string, key: keyof typeof smtpDraft, type = 'text') => (
-    <label className="block text-xs text-slate-400">
-      {label}
+  const field = (labelKey: string, key: keyof typeof smtpDraft, type = 'text') => (
+    <label className="block text-xs text-ink-400">
+      {t(labelKey)}
       <input
         type={type}
         value={String(smtpDraft[key] ?? '')}
         onChange={(e) =>
           setSmtp({ ...smtpDraft, [key]: type === 'number' ? Number(e.target.value) : e.target.value })
         }
-        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm text-slate-100 outline-none focus:border-sky-500"
+        className="input-base mt-1"
       />
     </label>
   );
 
   return (
     <section>
-      <h2 className="mb-3 text-sm font-semibold text-slate-300">Notifications</h2>
-      <div className="space-y-2">
-        <label className="flex items-center justify-between rounded-lg bg-slate-800/50 px-3 py-2">
-          <span className="text-sm text-slate-200">macOS banner (osascript)</span>
+      <SectionHeader title={t('settings.notifications')} help={t('settings.notifications.help')} />
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="card flex items-start justify-between gap-3 p-3">
+          <span>
+            <span className="block text-sm font-medium text-ink-200">{t('settings.notify.macos')}</span>
+            <span className="mt-0.5 block text-[11px] text-ink-500">{t('settings.notify.macos.help')}</span>
+          </span>
           <input
             type="checkbox"
             checked={settings.notifyMacos}
             onChange={(e) => update.mutate({ notifyMacos: e.target.checked })}
-            className="h-4 w-4 accent-sky-500"
+            className="mt-1 h-4 w-4 accent-[#f5b942]"
           />
         </label>
-        <label className="flex items-center justify-between rounded-lg bg-slate-800/50 px-3 py-2">
-          <span className="text-sm text-slate-200">Email (SMTP)</span>
+        <label className="card flex items-start justify-between gap-3 p-3">
+          <span>
+            <span className="block text-sm font-medium text-ink-200">{t('settings.notify.email')}</span>
+            <span className="mt-0.5 block text-[11px] text-ink-500">{t('settings.notify.email.help')}</span>
+          </span>
           <input
             type="checkbox"
             checked={settings.notifyEmail}
             onChange={(e) => update.mutate({ notifyEmail: e.target.checked })}
-            className="h-4 w-4 accent-sky-500"
+            className="mt-1 h-4 w-4 accent-[#f5b942]"
           />
         </label>
       </div>
 
       {settings.notifyEmail && (
-        <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900 p-3">
+        <div className="card mt-2 p-3">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {field('Host', 'host')}
-            {field('Port', 'port', 'number')}
-            {field('User', 'user')}
-            {field('Password', 'pass', 'password')}
-            {field('From', 'from')}
-            {field('To', 'to')}
+            {field('settings.smtp.host', 'host')}
+            {field('settings.smtp.port', 'port', 'number')}
+            {field('settings.smtp.user', 'user')}
+            {field('settings.smtp.pass', 'pass', 'password')}
+            {field('settings.smtp.from', 'from')}
+            {field('settings.smtp.to', 'to')}
           </div>
-          <label className="mt-2 flex items-center gap-2 text-xs text-slate-400">
+          <label className="mt-2 flex items-center gap-2 text-xs text-ink-400">
             <input
               type="checkbox"
               checked={smtpDraft.secure}
               onChange={(e) => setSmtp({ ...smtpDraft, secure: e.target.checked })}
-              className="h-3.5 w-3.5 accent-sky-500"
+              className="h-3.5 w-3.5 accent-[#f5b942]"
             />
-            TLS (secure)
+            {t('settings.smtp.tls')}
           </label>
           <button
             onClick={() => update.mutate({ smtp: smtpDraft })}
-            className="mt-3 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500"
+            className="btn btn-primary mt-3 px-3 py-1.5 text-xs"
           >
-            Save SMTP
+            {t('settings.smtp.save')}
           </button>
         </div>
       )}
 
-      <button
-        onClick={() => testNotify.mutate()}
-        className="mt-3 rounded-lg bg-slate-800 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700"
-      >
-        {testNotify.isPending ? 'Sending…' : testNotify.isSuccess ? '✓ Sent' : 'Send test notification'}
+      <button onClick={() => testNotify.mutate()} className="btn btn-ghost mt-3 px-3 py-1.5 text-xs">
+        {testNotify.isPending
+          ? t('settings.notify.sending')
+          : testNotify.isSuccess
+            ? `✓ ${t('settings.notify.sent')}`
+            : t('settings.notify.send')}
       </button>
     </section>
   );

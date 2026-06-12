@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Project } from '@akb/shared';
 import { api, ApiError } from '../lib/api';
+import { useT } from '../lib/i18n';
 import { UploadDropzone } from '../components/UploadDropzone';
 
 export default function NewProject() {
+  const t = useT();
   const navigate = useNavigate();
   const [prompt, setPrompt] = useState('');
   const [name, setName] = useState('');
@@ -41,65 +43,69 @@ export default function NewProject() {
     }
   }
 
+  const label = 'mb-1 block text-sm font-medium text-ink-300';
+  const optional = <span className="font-normal text-ink-500"> · {t('new.nameOptional')}</span>;
+
   return (
     <div className="mx-auto max-w-2xl p-4 sm:p-6">
-      <h1 className="mb-5 text-lg font-semibold">New Project</h1>
+      <h1 className="mb-5 text-xl font-semibold tracking-tight">{t('new.title')}</h1>
       <div className="space-y-5">
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-300">Your idea / task *</span>
+          <span className={label}>{t('new.idea')} *</span>
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             rows={6}
-            placeholder="Describe what you want built. The planner agent will refine it and ask follow-up questions if needed."
-            className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-sm outline-none placeholder:text-slate-600 focus:border-sky-500"
+            placeholder={t('new.ideaPlaceholder')}
+            className="input-base"
           />
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-300">
-            Target repo path * <span className="font-normal text-slate-500">(local git repo the agents will work in)</span>
+          <span className={label}>
+            {t('new.repo')} * <span className="font-normal text-ink-500">— {t('new.repoHint')}</span>
           </span>
           <input
             value={repoPath}
             onChange={(e) => setRepoPath(e.target.value)}
             placeholder="/Users/leo/Code/my-project"
-            className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 font-mono text-sm outline-none placeholder:text-slate-600 focus:border-sky-500"
+            className="input-base font-mono"
           />
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-300">
-            Project name <span className="font-normal text-slate-500">(optional)</span>
+          <span className={label}>
+            {t('new.name')}
+            {optional}
           </span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Derived from the prompt if empty"
-            className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-sm outline-none placeholder:text-slate-600 focus:border-sky-500"
+            placeholder={t('new.namePlaceholder')}
+            className="input-base"
           />
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-300">
-            Reference links <span className="font-normal text-slate-500">(one URL per line)</span>
+          <span className={label}>
+            {t('new.links')} <span className="font-normal text-ink-500">— {t('new.linksHint')}</span>
           </span>
           <textarea
             value={links}
             onChange={(e) => setLinks(e.target.value)}
             rows={2}
-            placeholder={'https://example.com/docs\nhttps://github.com/some/repo'}
-            className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 font-mono text-xs outline-none placeholder:text-slate-600 focus:border-sky-500"
+            placeholder={'https://example.com/docs'}
+            className="input-base font-mono text-xs"
           />
         </label>
 
         <div>
-          <span className="mb-1 block text-sm font-medium text-slate-300">Resource files</span>
+          <span className={label}>{t('new.files')}</span>
           <UploadDropzone files={files} onChange={setFiles} />
         </div>
 
         {error && (
-          <p className="rounded-lg border border-rose-800 bg-rose-950/50 p-3 text-sm text-rose-300">
+          <p className="rounded-lg border border-red-900 bg-red-950/50 p-3 text-sm text-red-300">
             {error}
           </p>
         )}
@@ -107,9 +113,9 @@ export default function NewProject() {
         <button
           onClick={submit}
           disabled={busy || !prompt.trim() || !repoPath.trim()}
-          className="w-full rounded-xl bg-sky-600 py-3 text-sm font-semibold text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
+          className="btn btn-primary w-full py-3 text-sm font-semibold"
         >
-          {busy ? 'Creating…' : 'Create project'}
+          {busy ? t('new.creating') : t('new.create')}
         </button>
       </div>
     </div>

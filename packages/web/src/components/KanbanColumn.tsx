@@ -1,14 +1,7 @@
 import { useDroppable } from '@dnd-kit/core';
 import type { Task, TaskStatus } from '@akb/shared';
+import { columnAccent } from '../lib/format';
 import { TaskCard } from './TaskCard';
-
-const columnAccent: Record<string, string> = {
-  backlog: 'border-t-slate-500',
-  wip: 'border-t-sky-500',
-  to_review: 'border-t-violet-500',
-  to_test: 'border-t-amber-500',
-  done: 'border-t-emerald-500',
-};
 
 export function KanbanColumn({
   status,
@@ -28,24 +21,26 @@ export function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`flex h-full w-[85vw] shrink-0 snap-center flex-col rounded-xl border border-slate-800 border-t-2 bg-slate-900/60 sm:w-auto sm:min-w-0 sm:flex-1 ${columnAccent[status] ?? ''} ${
-        isOver ? 'bg-slate-800/80 ring-1 ring-sky-500/50' : ''
+      className={`flex h-full w-[82vw] shrink-0 snap-center flex-col rounded-2xl border bg-ink-900/70 transition-colors duration-150 sm:w-auto sm:min-w-0 sm:flex-1 ${
+        isOver ? 'border-accent-500/50 bg-ink-850' : 'border-ink-800'
       }`}
     >
-      <div className="flex items-center justify-between px-3 py-2.5">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">{label}</h3>
-        <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] text-slate-400">
+      <div className="flex items-center gap-2 px-3.5 py-3">
+        <span className={`h-2 w-2 rounded-full ${columnAccent[status] ?? 'bg-ink-500'}`} />
+        <h3 className="text-[13px] font-semibold text-ink-200">{label}</h3>
+        <span className="ml-auto rounded-md bg-ink-800 px-1.5 py-0.5 font-mono text-[11px] text-ink-400 tabular">
           {tasks.length}
         </span>
       </div>
       <div className="flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto p-2 pt-0">
-        {tasks.map((t) => (
-          <TaskCard
-            key={t.id}
-            task={t}
-            projectName={projectNames.get(t.projectId)}
-            live={liveTaskIds.has(t.id)}
-          />
+        {tasks.map((task, i) => (
+          <div key={task.id} className="rise-in" style={{ animationDelay: `${i * 30}ms` }}>
+            <TaskCard
+              task={task}
+              projectName={projectNames.get(task.projectId)}
+              live={liveTaskIds.has(task.id)}
+            />
+          </div>
         ))}
       </div>
     </div>

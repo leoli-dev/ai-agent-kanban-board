@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { WsServerMessage } from '@akb/shared';
 
 type Listener = (msg: WsServerMessage) => void;
@@ -7,21 +7,38 @@ type Listener = (msg: WsServerMessage) => void;
  * Singleton WebSocket client with auto-reconnect and topic re-subscription.
  * Components register listeners + topics via useWsTopics.
  */
+export type WsStatus = 'connecting' | 'online' | 'offline';
+
 class WsClient {
   private socket: WebSocket | null = null;
   private listeners = new Set<Listener>();
   private topics = new Map<string, number>(); // topic -> refcount
   private reconnectDelay = 1000;
   private reconnectListeners = new Set<() => void>();
+  private statusListeners = new Set<(s: WsStatus) => void>();
+  status: WsStatus = 'connecting';
+
+  private setStatus(s: WsStatus): void {
+    if (this.status === s) return;
+    this.status = s;
+    this.statusListeners.forEach((fn) => fn(s));
+  }
+
+  onStatus(fn: (s: WsStatus) => void): () => void {
+    this.statusListeners.add(fn);
+    return () => this.statusListeners.delete(fn);
+  }
 
   connect(): void {
     if (this.socket && this.socket.readyState <= WebSocket.OPEN) return;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const socket = new WebSocket(`${proto}://${location.host}/ws`);
     this.socket = socket;
+    this.setStatus('connecting');
 
     socket.onopen = () => {
       this.reconnectDelay = 1000;
+      this.setStatus('online');
       const topics = [...this.topics.keys()];
       if (topics.length) socket.send(JSON.stringify({ type: 'subscribe', topics }));
       this.reconnectListeners.forEach((fn) => fn());
@@ -36,6 +53,7 @@ class WsClient {
     };
     socket.onclose = () => {
       this.socket = null;
+      this.setStatus('offline');
       setTimeout(() => this.connect(), this.reconnectDelay);
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, 15000);
     };
@@ -79,6 +97,15 @@ class WsClient {
 }
 
 export const wsClient = new WsClient();
+
+export function useWsStatus(): WsStatus {
+  const [status, setStatus] = useState<WsStatus>(wsClient.status);
+  useEffect(() => {
+    wsClient.connect();
+    return wsClient.onStatus(setStatus);
+  }, []);
+  return status;
+}
 
 export function useWsTopics(topics: string[], onMessage: Listener): void {
   const handlerRef = useRef(onMessage);

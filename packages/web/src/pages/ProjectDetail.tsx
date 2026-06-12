@@ -5,25 +5,30 @@ import ReactMarkdown from 'react-markdown';
 import type { AgentRun, PlanDocument, Project, ProjectInput, Task } from '@akb/shared';
 import { api } from '../lib/api';
 import { useWsTopics } from '../lib/ws';
-import { formatCost, projectStatusLabel, projectStatusStyle, taskStatusStyle } from '../lib/format';
+import { useT } from '../lib/i18n';
+import { formatCost, projectStatusStyle, taskStatusStyle } from '../lib/format';
+import { Loading, LoadError } from '../components/QueryState';
+import { IconBoard, IconChat, IconSpark } from '../components/icons';
 
 type ProjectFull = Project & { inputs: ProjectInput[]; plans: PlanDocument[] };
 
 export default function ProjectDetail() {
+  const t = useT();
   const { projectId = '' } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [rejectComment, setRejectComment] = useState('');
   const [showReject, setShowReject] = useState(false);
 
-  const { data: project } = useQuery({
+  const { data: project, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['project', projectId],
     queryFn: () => api.get<ProjectFull>(`/api/projects/${projectId}`),
   });
   const { data: planMd } = useQuery({
     queryKey: ['planMd', projectId],
     queryFn: () => api.get<{ md: string | null }>(`/api/projects/${projectId}/plan`),
-    enabled: !!project && ['awaiting_approval', 'running', 'paused', 'done'].includes(project.status),
+    enabled:
+      !!project && ['awaiting_approval', 'running', 'paused', 'done'].includes(project.status),
   });
   const { data: tasks = [] } = useQuery({
     queryKey: ['tasks', projectId],
@@ -62,7 +67,8 @@ export default function ProjectDetail() {
     },
   });
   const reject = useMutation({
-    mutationFn: (comment: string) => api.post(`/api/projects/${projectId}/plan/reject`, { comment }),
+    mutationFn: (comment: string) =>
+      api.post(`/api/projects/${projectId}/plan/reject`, { comment }),
     onSuccess: () => {
       setShowReject(false);
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
@@ -70,41 +76,43 @@ export default function ProjectDetail() {
     },
   });
 
-  if (!project) return <div className="p-6 text-slate-400">Loading…</div>;
+  if (isLoading) return <Loading />;
+  if (isError || !project) return <LoadError error={error} onRetry={refetch} />;
 
   const totalCost = runs.reduce((sum, r) => sum + (r.costUsd ?? 0), 0);
-  const doneTasks = tasks.filter((t) => t.status === 'done').length;
+  const doneTasks = tasks.filter((x) => x.status === 'done').length;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6">
+    <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
       <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-lg font-semibold">{project.name}</h1>
-          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${projectStatusStyle[project.status]}`}>
-            {projectStatusLabel[project.status]}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="text-xl font-semibold tracking-tight">{project.name}</h1>
+          <span
+            className={`rounded-md px-2.5 py-1 text-xs font-medium ${projectStatusStyle[project.status]}`}
+          >
+            {t(`status.${project.status}`)}
           </span>
         </div>
-        <p className="mt-1 font-mono text-xs text-slate-500">
+        <p className="mt-1 font-mono text-xs text-ink-500">
           {project.targetRepoPath}
           {project.gitBranch ? ` · ${project.gitBranch}` : ''}
         </p>
-        <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-400">
-          <span>
-            Tasks: {doneTasks}/{tasks.length}
-          </span>
-          <span>Cost to date: {formatCost(totalCost)}</span>
+        <div className="mt-2 flex flex-wrap gap-4 font-mono text-xs text-ink-400 tabular">
+          <span>{t('projects.tasks', { done: doneTasks, total: tasks.length })}</span>
+          <span>{t('project.costToDate', { cost: formatCost(totalCost) })}</span>
         </div>
       </div>
 
-      <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-        <h2 className="mb-2 text-sm font-semibold text-slate-300">Idea</h2>
-        <p className="whitespace-pre-wrap text-sm text-slate-200">{project.prompt}</p>
+      <section className="card p-4">
+        <h2 className="mb-2 text-sm font-semibold text-ink-300">{t('project.idea')}</h2>
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-200">{project.prompt}</p>
         {project.inputs.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {project.inputs.map((i) => (
-              <span key={i.id} className="rounded-md bg-slate-800 px-2 py-1 text-xs text-slate-400">
-                {i.kind === 'link' ? '🔗 ' : '📎 '}
-                {i.kind === 'link' ? i.pathOrUrl : (i.originalName ?? i.pathOrUrl.split('/').pop())}
+              <span key={i.id} className="rounded-md bg-ink-800 px-2 py-1 text-xs text-ink-400">
+                {i.kind === 'link'
+                  ? i.pathOrUrl
+                  : (i.originalName ?? i.pathOrUrl.split('/').pop())}
               </span>
             ))}
           </div>
@@ -116,47 +124,48 @@ export default function ProjectDetail() {
           <button
             onClick={() => startPlanning.mutate()}
             disabled={startPlanning.isPending}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
+            className="btn btn-primary px-4 py-2 text-sm"
           >
-            {startPlanning.isPending ? 'Starting…' : '🧠 Start planning'}
+            <IconSpark width={15} height={15} />
+            {startPlanning.isPending ? t('project.starting') : t('project.startPlanning')}
           </button>
         )}
         {['planning', 'awaiting_answers', 'awaiting_approval'].includes(project.status) && (
-          <Link
-            to={`/projects/${projectId}/planner`}
-            className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-600"
-          >
-            💬 Planner session
+          <Link to={`/projects/${projectId}/planner`} className="btn btn-ghost px-4 py-2 text-sm">
+            <IconChat width={15} height={15} /> {t('project.plannerSession')}
           </Link>
         )}
         {tasks.length > 0 && (
-          <Link
-            to={`/projects/${projectId}/board`}
-            className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-600"
-          >
-            ▦ Board
+          <Link to={`/projects/${projectId}/board`} className="btn btn-ghost px-4 py-2 text-sm">
+            <IconBoard width={15} height={15} /> {t('project.board')}
           </Link>
         )}
       </div>
 
+      {startPlanning.isError && (
+        <p className="rounded-lg border border-red-900 bg-red-950/50 p-3 text-sm text-red-300">
+          {String((startPlanning.error as Error).message)}
+        </p>
+      )}
+
       {planMd?.md && (
-        <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-300">Plan</h2>
+        <section className="card p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-ink-300">{t('project.plan')}</h2>
             {project.status === 'awaiting_approval' && (
               <div className="flex gap-2">
                 <button
                   onClick={() => approve.mutate()}
                   disabled={approve.isPending}
-                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+                  className="btn btn-primary px-3.5 py-1.5 text-xs font-semibold"
                 >
-                  {approve.isPending ? 'Approving…' : '✓ Approve & start'}
+                  {approve.isPending ? t('project.approving') : t('project.approve')}
                 </button>
                 <button
                   onClick={() => setShowReject((v) => !v)}
-                  className="rounded-lg bg-rose-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600"
+                  className="btn btn-danger px-3.5 py-1.5 text-xs font-semibold"
                 >
-                  ✕ Request changes
+                  {t('project.requestChanges')}
                 </button>
               </div>
             )}
@@ -167,37 +176,39 @@ export default function ProjectDetail() {
                 value={rejectComment}
                 onChange={(e) => setRejectComment(e.target.value)}
                 rows={3}
-                placeholder="What should change in the plan?"
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm outline-none focus:border-sky-500"
+                placeholder={t('project.rejectPlaceholder')}
+                className="input-base"
               />
               <button
                 onClick={() => reject.mutate(rejectComment)}
                 disabled={!rejectComment.trim() || reject.isPending}
-                className="rounded-lg bg-rose-700 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                className="btn btn-danger px-3.5 py-1.5 text-xs font-semibold"
               >
-                Send back to planner
+                {t('project.sendBack')}
               </button>
             </div>
           )}
-          <div className="prose prose-sm prose-invert max-w-none">
+          <div className="prose prose-sm prose-invert max-w-none prose-headings:tracking-tight">
             <ReactMarkdown>{planMd.md}</ReactMarkdown>
           </div>
         </section>
       )}
 
       {tasks.length > 0 && (
-        <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-          <h2 className="mb-2 text-sm font-semibold text-slate-300">Tasks</h2>
+        <section className="card p-4">
+          <h2 className="mb-2 text-sm font-semibold text-ink-300">{t('project.tasks')}</h2>
           <ul className="space-y-1.5">
-            {tasks.map((t) => (
-              <li key={t.id}>
+            {tasks.map((x) => (
+              <li key={x.id}>
                 <Link
-                  to={`/tasks/${t.id}`}
-                  className="flex items-center justify-between rounded-lg bg-slate-800/50 px-3 py-2 hover:bg-slate-800"
+                  to={`/tasks/${x.id}`}
+                  className="flex items-center justify-between rounded-lg bg-ink-850 px-3 py-2.5 transition-colors hover:bg-ink-800"
                 >
-                  <span className="truncate text-sm text-slate-200">{t.title}</span>
-                  <span className={`ml-2 shrink-0 rounded-full px-2 py-0.5 text-[11px] ${taskStatusStyle[t.status]}`}>
-                    {t.status}
+                  <span className="truncate text-sm text-ink-200">{x.title}</span>
+                  <span
+                    className={`ml-2 shrink-0 rounded-md px-2 py-0.5 text-[11px] ${taskStatusStyle[x.status]}`}
+                  >
+                    {t(`task.${x.status}`)}
                   </span>
                 </Link>
               </li>
