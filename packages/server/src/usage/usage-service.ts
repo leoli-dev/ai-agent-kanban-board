@@ -517,7 +517,7 @@ async function codexRefreshTokens(
   }
 }
 
-async function readClaudeOauthToken(): Promise<string | null> {
+export async function readClaudeOauthToken(): Promise<string | null> {
   // macOS Keychain first (where Claude Code stores OAuth credentials).
   if (process.platform === 'darwin') {
     try {
