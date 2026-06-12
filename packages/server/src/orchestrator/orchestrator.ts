@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eq } from 'drizzle-orm';
+import { z } from 'zod';
 import type { Project, Task } from '@akb/shared';
+import type { ProviderRegistry } from '../providers/registry.js';
 import { SAFETY_TICK_MS } from '../config.js';
 import { schema, type Db } from '../db/index.js';
 import { toProject } from '../db/mappers.js';
@@ -15,11 +17,18 @@ import { commitAll, currentBranch, ensureBranch, isDirty } from '../workspace/gi
 import { workspacePaths } from '../workspace/workspace.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CODER_CONTRACT = fs.readFileSync(path.join(__dirname, '../agents/prompts/coder.md'), 'utf8');
-const DEBUGGER_CONTRACT = fs.readFileSync(
-  path.join(__dirname, '../agents/prompts/debugger.md'),
-  'utf8',
-);
+const prompt = (name: string) =>
+  fs.readFileSync(path.join(__dirname, `../agents/prompts/${name}.md`), 'utf8');
+const CODER_CONTRACT = prompt('coder');
+const DEBUGGER_CONTRACT = prompt('debugger');
+const REVIEWER_CONTRACT = prompt('reviewer');
+const TESTER_CONTRACT = prompt('tester');
+
+const ReviewVerdict = z.object({
+  verdict: z.enum(['approve', 'changes_requested']),
+  notes: z.string().default(''),
+});
+const TestVerdict = z.object({ pass: z.boolean(), summary: z.string().default('') });
 
 interface OrchestratorDeps {
   db: Db;
@@ -27,6 +36,7 @@ interface OrchestratorDeps {
   runner: AgentRunner;
   settings: SettingsStore;
   notifier: Notifier;
+  registry: ProviderRegistry;
   workspacesDir: string;
 }
 
@@ -105,7 +115,7 @@ export class Orchestrator {
       for (const task of ready) {
         if (this.activeTasks.size >= capacityTotal) return;
         this.activeTasks.add(task.id);
-        void this.runCoderStage(project, task).finally(() => {
+        void this.runTaskPipeline(project, task).finally(() => {
           this.activeTasks.delete(task.id);
           this.nudge();
         });
@@ -113,7 +123,8 @@ export class Orchestrator {
     }
   }
 
-  private async runCoderStage(project: Project, task: Task): Promise<void> {
+  /** coder -> (reviewer) -> (tester) for a single task, honoring auto-advance. */
+  private async runTaskPipeline(project: Project, task: Task): Promise<void> {
     const ws = workspacePaths(this.deps.workspacesDir, project.id);
     try {
       const prepError = await this.prepareRepo(project);
@@ -153,10 +164,7 @@ export class Orchestrator {
           /* repo state issues surface in review */
         }
         updateTask(this.deps.db, this.deps.hub, task.id, { status: 'to_review' });
-        this.deps.hub.publish(`board:${project.id}`, {
-          type: 'task.updated',
-          task: getTask(this.deps.db, task.id)!,
-        });
+        await this.runReviewAndTestStages(project, task, ws.artifacts);
         return;
       }
 
@@ -177,6 +185,124 @@ export class Orchestrator {
       await this.handleTaskFailure(project, task, outcome.finalRun?.resultText ?? 'no result');
     } catch (err) {
       await this.handleTaskFailure(project, task, String(err));
+    }
+  }
+
+  private async runReviewAndTestStages(
+    project: Project,
+    task: Task,
+    artifactsDir: string,
+  ): Promise<void> {
+    const settings = this.deps.settings.get();
+
+    // Review stage (skipped -> stays in to_review for manual handling).
+    if (!settings.autoAdvanceReview || !this.deps.registry.pickForRole('reviewer')) return;
+
+    const reviewPath = path.join(artifactsDir, `review-${task.id}.json`);
+    const review = await this.runVerdictAgent({
+      project,
+      task,
+      role: 'reviewer',
+      contract: REVIEWER_CONTRACT,
+      filePath: reviewPath,
+      schema: ReviewVerdict,
+      promptIntro: `Review the work for this task. Write your verdict JSON to: ${reviewPath}`,
+    });
+    if (!review) return; // stage agent failed; leave for manual review
+
+    if (review.verdict === 'changes_requested') {
+      await this.bounce(project, task, `Review requested changes: ${review.notes}`);
+      return;
+    }
+    updateTask(this.deps.db, this.deps.hub, task.id, { status: 'to_test' });
+
+    // Test stage (skipped -> stays in to_test for manual handling).
+    if (!settings.autoAdvanceTest || !this.deps.registry.pickForRole('tester')) return;
+
+    const reportPath = path.join(artifactsDir, `test-report-${task.id}.json`);
+    const report = await this.runVerdictAgent({
+      project,
+      task,
+      role: 'tester',
+      contract: TESTER_CONTRACT,
+      filePath: reportPath,
+      schema: TestVerdict,
+      promptIntro: `Verify this task's implementation works. Write your report JSON to: ${reportPath}`,
+    });
+    if (!report) return;
+
+    if (!report.pass) {
+      await this.bounce(project, task, `Tests failed: ${report.summary}`);
+      return;
+    }
+    updateTask(this.deps.db, this.deps.hub, task.id, { status: 'done' });
+  }
+
+  /** Shared reviewer/tester execution: run agent, read + validate verdict file. */
+  private async runVerdictAgent<T>(opts: {
+    project: Project;
+    task: Task;
+    role: 'reviewer' | 'tester';
+    contract: string;
+    filePath: string;
+    schema: z.ZodType<T>;
+    promptIntro: string;
+  }): Promise<T | null> {
+    const ws = workspacePaths(this.deps.workspacesDir, opts.project.id);
+    try {
+      const outcome = await this.deps.runner.run({
+        role: opts.role,
+        prompt: `${opts.promptIntro}
+
+# Task that was implemented: ${opts.task.title}
+
+${opts.task.description}
+
+## Acceptance criteria
+${opts.task.acceptanceCriteria.map((c) => `- ${c}`).join('\n') || '- (none)'}
+
+## Context
+- Git branch with the work: ${opts.project.gitBranch}
+- Commits for this task use the prefix: task(${opts.task.planStepId ?? opts.task.id})`,
+        cwd: opts.project.targetRepoPath,
+        logDir: ws.logs,
+        taskId: opts.task.id,
+        projectId: opts.project.id,
+        addDirs: [ws.root],
+        systemAppend: opts.contract,
+      });
+      if (!outcome.ok) return null;
+      return opts.schema.parse(JSON.parse(fs.readFileSync(opts.filePath, 'utf8')));
+    } catch {
+      return null;
+    }
+  }
+
+  /** Send a task back to the coder with stage feedback, bounded by maxBounces. */
+  private async bounce(project: Project, task: Task, feedback: string): Promise<void> {
+    const fresh = getTask(this.deps.db, task.id)!;
+    const maxBounces = this.deps.settings.get().maxBounces;
+    fs.writeFileSync(
+      path.join(
+        workspacePaths(this.deps.workspacesDir, project.id).artifacts,
+        `feedback-${task.id}.md`,
+      ),
+      feedback,
+    );
+    if (fresh.bounceCount < maxBounces) {
+      updateTask(this.deps.db, this.deps.hub, task.id, {
+        status: 'backlog',
+        bounceCount: fresh.bounceCount + 1,
+      });
+      this.nudge();
+    } else {
+      updateTask(this.deps.db, this.deps.hub, task.id, { status: 'failed' });
+      await this.deps.notifier.notify(
+        'task_failed',
+        `Task failed review/test: ${task.title}`,
+        `Bounced ${maxBounces} times. Last feedback: ${feedback.slice(0, 500)}`,
+        project.id,
+      );
     }
   }
 
@@ -237,6 +363,16 @@ export class Orchestrator {
       ? task.acceptanceCriteria.map((c) => `- ${c}`).join('\n')
       : '- (none specified — use your judgement)';
 
+    let bounceContext = '';
+    if (task.bounceCount > 0) {
+      try {
+        const feedback = fs.readFileSync(path.join(artifactsDir, `feedback-${task.id}.md`), 'utf8');
+        bounceContext = `\n## Review/test feedback on your previous implementation (round ${task.bounceCount})\n${feedback.slice(0, 3000)}\nAddress this feedback. The previous work is already committed on the branch — amend it with new commits.\n`;
+      } catch {
+        /* no feedback file */
+      }
+    }
+
     let retryContext = '';
     if (task.retryCount > 0) {
       const lastDiagnosis = latestDiagnosis(artifactsDir, task.id);
@@ -263,7 +399,7 @@ ${task.description}
 
 ## Acceptance criteria
 ${criteria}
-${retryContext}
+${bounceContext}${retryContext}
 ## Working agreement
 - Current git branch: ${project.gitBranch} (already checked out — stay on it)
 - Commit message format: task(${task.planStepId ?? task.id}): <what you did>

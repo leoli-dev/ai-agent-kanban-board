@@ -76,6 +76,7 @@ function makeFixture(taskSpecs: { id: string; deps: string[] }[]): Fixture {
     runner: ctx.runner,
     settings: ctx.settings,
     notifier,
+    registry: ctx.registry,
     workspacesDir: ctx.tmpDir,
   });
   return { ctx, orchestrator, projectId, repo, artifacts: ws.artifacts };
@@ -186,6 +187,88 @@ describe('Orchestrator (money test)', () => {
     expect(fs.readFileSync(path.join(f.artifacts, diagnoses[0]!), 'utf8')).toContain(
       'interactive prompt hang',
     );
+  }, 30_000);
+
+  it('runs the full auto pipeline: coder -> reviewer -> tester -> done', async () => {
+    const f = makeFixture([{ id: 't1', deps: [] }]);
+    addMockProfile(f.ctx, 'coder', scripts.success('implemented'));
+    addMockProfile(
+      f.ctx,
+      'reviewer',
+      scripts.success('REVIEW_DONE', {
+        writeFiles: [
+          {
+            path: path.join(f.artifacts, 'review-t1.json'),
+            content: JSON.stringify({ verdict: 'approve', notes: 'looks good' }),
+          },
+        ],
+      }),
+    );
+    addMockProfile(
+      f.ctx,
+      'tester',
+      scripts.success('TEST_DONE', {
+        writeFiles: [
+          {
+            path: path.join(f.artifacts, 'test-report-t1.json'),
+            content: JSON.stringify({ pass: true, summary: 'all tests pass' }),
+          },
+        ],
+      }),
+    );
+
+    f.orchestrator.start();
+    await waitFor(
+      () =>
+        f.ctx.db.select().from(schema.projects).where(eq(schema.projects.id, f.projectId)).get()!
+          .status === 'done',
+    );
+    f.orchestrator.stop();
+
+    expect(taskStatus(f.ctx, 't1')).toBe('done');
+    const roles = f.ctx.runStore.listByTask('t1').map((r) => r.role).sort();
+    expect(roles).toEqual(['coder', 'reviewer', 'tester']);
+  }, 30_000);
+
+  it('bounces a task back to the coder when review requests changes', async () => {
+    const f = makeFixture([{ id: 't1', deps: [] }]);
+    f.ctx.settings.update({ autoAdvanceTest: false });
+    addMockProfile(f.ctx, 'coder', scripts.success('implemented'));
+    addMockProfile(
+      f.ctx,
+      'reviewer',
+      phased(
+        [
+          scripts.success('REVIEW_DONE', {
+            writeFiles: [
+              {
+                path: path.join(f.artifacts, 'review-t1.json'),
+                content: JSON.stringify({ verdict: 'changes_requested', notes: 'missing error handling' }),
+              },
+            ],
+          }),
+          scripts.success('REVIEW_DONE', {
+            writeFiles: [
+              {
+                path: path.join(f.artifacts, 'review-t1.json'),
+                content: JSON.stringify({ verdict: 'approve', notes: 'fixed' }),
+              },
+            ],
+          }),
+        ],
+        path.join(f.ctx.tmpDir, 'stateR'),
+      ),
+    );
+
+    f.orchestrator.start();
+    await waitFor(() => taskStatus(f.ctx, 't1') === 'to_test');
+    f.orchestrator.stop();
+
+    const task = f.ctx.db.select().from(schema.tasks).where(eq(schema.tasks.id, 't1')).get()!;
+    expect(task.bounceCount).toBe(1);
+    expect(
+      fs.readFileSync(path.join(f.artifacts, 'feedback-t1.md'), 'utf8'),
+    ).toContain('missing error handling');
   }, 30_000);
 
   it('fails a task after retries are exhausted and notifies', async () => {

@@ -22,6 +22,6 @@ export const mockAdapter: EngineAdapter = {
     };
   },
 
-  parseLine: (line) => claudeCodeAdapter.parseLine(line),
+  parseLine: (line, state) => claudeCodeAdapter.parseLine(line, state),
   classify: (exit, stderr, result) => claudeCodeAdapter.classify(exit, stderr, result),
 };

@@ -37,6 +37,7 @@ async function main(): Promise<void> {
     runner,
     settings,
     notifier,
+    registry,
     workspacesDir: WORKSPACES_DIR,
   });
   runner.on('provider_down', (info: { profile: { name: string }; reason: string; permanent: boolean }) => {

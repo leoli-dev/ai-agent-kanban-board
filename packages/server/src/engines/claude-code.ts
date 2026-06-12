@@ -46,7 +46,7 @@ export const claudeCodeAdapter: EngineAdapter = {
     return { cmd, args, env };
   },
 
-  parseLine(line: string): NormalizedEvent | null {
+  parseLine(line: string, _state: Record<string, unknown>): NormalizedEvent | null {
     const trimmed = line.trim();
     if (!trimmed) return null;
     let obj: ClaudeStreamLine;

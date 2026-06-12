@@ -1,10 +1,12 @@
 import type { EngineId } from '@akb/shared';
 import type { EngineAdapter } from './types.js';
 import { claudeCodeAdapter } from './claude-code.js';
+import { codexAdapter } from './codex.js';
 import { mockAdapter } from './mock.js';
 
 const adapters = new Map<EngineId, EngineAdapter>([
   ['claude-code', claudeCodeAdapter],
+  ['codex', codexAdapter],
   ['mock', mockAdapter],
 ]);
 

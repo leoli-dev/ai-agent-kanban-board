@@ -336,7 +336,8 @@ export class AgentRunner extends EventEmitter {
         }
       };
 
-      const splitter = new LineSplitter((line) => onEvent(line, adapter.parseLine(line)));
+      const parseState: Record<string, unknown> = {};
+      const splitter = new LineSplitter((line) => onEvent(line, adapter.parseLine(line, parseState)));
       child.stdout?.on('data', (chunk: Buffer) => splitter.push(chunk));
       child.stderr?.on('data', (chunk: Buffer) => {
         const text = chunk.toString();

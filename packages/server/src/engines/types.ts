@@ -46,7 +46,11 @@ export interface NormalizedResult {
 export interface EngineAdapter {
   id: EngineId;
   buildSpawn(req: SpawnRequest): SpawnSpec;
-  /** Tolerant: unknown/garbage lines return {kind:'raw'} or null (skip). */
-  parseLine(line: string): NormalizedEvent | null;
+  /**
+   * Tolerant: unknown/garbage lines return {kind:'raw'} or null (skip).
+   * `state` is a per-attempt scratch object for engines whose protocol needs
+   * accumulation across lines (e.g. codex has no single result event).
+   */
+  parseLine(line: string, state: Record<string, unknown>): NormalizedEvent | null;
   classify(exitCode: number | null, stderrTail: string, lastResult?: NormalizedResult): FailureClass;
 }
