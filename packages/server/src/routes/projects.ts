@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
@@ -34,7 +34,51 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
       .from(schema.projects)
       .orderBy(desc(schema.projects.createdAt))
       .all();
-    return rows.map(toProject);
+
+    // Per-project task status counts for the dashboard cards.
+    const counts = ctx.db
+      .select({
+        projectId: schema.tasks.projectId,
+        status: schema.tasks.status,
+        n: sql<number>`count(*)`,
+      })
+      .from(schema.tasks)
+      .groupBy(schema.tasks.projectId, schema.tasks.status)
+      .all();
+    const byProject = new Map<string, Record<string, number>>();
+    for (const c of counts) {
+      const m = byProject.get(c.projectId) ?? {};
+      m[c.status] = c.n;
+      byProject.set(c.projectId, m);
+    }
+
+    return rows.map((row) => {
+      const project = toProject(row);
+      const m = byProject.get(project.id) ?? {};
+      const total = Object.values(m).reduce((s, n) => s + n, 0);
+      const done = m.done ?? 0;
+      const failed = m.failed ?? 0;
+      const blocked = m.blocked ?? 0;
+      const inFlight = (m.wip ?? 0) + (m.to_review ?? 0) + (m.to_test ?? 0);
+      const percent =
+        project.status === 'done' ? 100 : total > 0 ? Math.round((done / total) * 100) : 0;
+      const needsAttention =
+        project.status === 'awaiting_answers'
+          ? 'answers'
+          : project.status === 'awaiting_approval'
+            ? 'approval'
+            : blocked > 0
+              ? 'blocked'
+              : failed > 0 && project.status !== 'done'
+                ? 'failed'
+                : null;
+      return {
+        ...project,
+        stats: { total, done, failed, blocked, inFlight, percent },
+        needsAttention,
+        runtimeMs: (project.completedAt ?? Date.now()) - project.createdAt,
+      };
+    });
   });
 
   app.post('/api/projects', async (req, reply) => {

@@ -8,7 +8,7 @@ import TaskDetail from './pages/TaskDetail';
 import Projects from './pages/Projects';
 import Settings from './pages/Settings';
 import { NotificationBell } from './components/NotificationBell';
-import { IconBoard, IconBolt, IconFolder, IconGear, IconSpark } from './components/icons';
+import { IconBolt, IconFolder, IconGear, IconSpark } from './components/icons';
 import { useT } from './lib/i18n';
 import { useWsStatus } from './lib/ws';
 
@@ -17,8 +17,7 @@ export default function App() {
   const wsStatus = useWsStatus();
 
   const tabs = [
-    { to: '/', label: t('nav.board'), icon: IconBoard },
-    { to: '/projects', label: t('nav.projects'), icon: IconFolder },
+    { to: '/', label: t('nav.projects'), icon: IconFolder },
     { to: '/activity', label: t('nav.activity'), icon: IconSpark },
     { to: '/settings', label: t('nav.settings'), icon: IconGear },
   ];
@@ -78,7 +77,7 @@ export default function App() {
 
       <main className="min-h-0 flex-1 overflow-auto pb-16 sm:pb-0">
         <Routes>
-          <Route path="/" element={<Board />} />
+          <Route path="/" element={<Projects />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/new" element={<NewProject />} />
           <Route path="/projects/:projectId" element={<ProjectDetail />} />

@@ -88,6 +88,11 @@ export const zh: Record<string, string> = {
   'projects.empty.title': '还没有项目',
   'projects.empty.body': '从一个想法开始。规划智能体把它变成可执行的计划，你批准后由智能体完成。',
   'projects.tasks': '{done}/{total} 个任务',
+  'projects.runtime': '运行 {time}',
+  'projects.needs.answers': '🙋 等你回答规划师的问题',
+  'projects.needs.approval': '🙋 等你审阅并批准计划',
+  'projects.needs.blocked': '⛔ 有受阻任务需要处理',
+  'projects.needs.failed': '⚠ 有失败任务——查看并重试',
 
   // new project
   'new.title': '新建项目',

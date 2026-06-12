@@ -88,6 +88,11 @@ export const en: Record<string, string> = {
   'projects.empty.title': 'No projects yet',
   'projects.empty.body': 'Start with one idea. The planner agent turns it into an executable plan, you approve, agents build.',
   'projects.tasks': '{done}/{total} tasks',
+  'projects.runtime': 'running {time}',
+  'projects.needs.answers': '🙋 Needs you: answer the planner’s questions',
+  'projects.needs.approval': '🙋 Needs you: review & approve the plan',
+  'projects.needs.blocked': '⛔ Blocked tasks need a look',
+  'projects.needs.failed': '⚠ Failed tasks — check and retry',
 
   // new project
   'new.title': 'New project',
