@@ -212,10 +212,12 @@ export const zh: Record<string, string> = {
   'usage.window.extraCredits': '额外用量额度',
   'usage.window.credits': '额度',
   'usage.window.balance': '余额',
+  'usage.window.tokensWindow': 'Token 配额',
+  'usage.window.timeWindow': '时间配额',
   'usage.unsupported': '据我所知该供应商没有可查询的用量 API。',
   'usage.unsupported.apiKey': 'API 密钥按量计费，没有订阅窗口；消费请查供应商控制台。',
   'usage.unsupported.noLogin': '本机没有 Claude CLI 登录（先在终端运行一次 `claude` 登录）。',
-  'usage.unsupported.codex': 'Codex 只在运行事件流里报告限额——先跑一个 codex 任务再来看。',
+  'usage.unsupported.codex': '本机没有 codex 登录（先在终端运行 `codex` 登录），也没有可读取限额的近期运行记录。',
   'usage.unsupported.noKey': '请先填入 API 密钥——用量需要用它来读取。',
 
   'settings.roles': '角色 → 模型优先级',

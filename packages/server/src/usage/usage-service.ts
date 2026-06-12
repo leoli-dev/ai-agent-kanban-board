@@ -37,7 +37,7 @@ export class UsageService {
   async forProfile(profile: ProviderProfile): Promise<UsageResult> {
     try {
       const env = this.safeResolve(profile.env);
-      if (profile.engine === 'codex') return this.codexFromLogs(profile);
+      if (profile.engine === 'codex') return await this.codex(profile);
 
       const base = (env.ANTHROPIC_BASE_URL ?? '').toLowerCase();
       if (!base || base.includes('api.anthropic.com')) {
@@ -52,6 +52,8 @@ export class UsageService {
       if (base.includes('openrouter.ai')) return await this.openrouter(env);
       if (base.includes('deepseek.com')) return await this.deepseek(env);
       if (base.includes('moonshot.')) return await this.moonshot(env, base);
+      if (base.includes('z.ai') || base.includes('bigmodel.cn')) return await this.zai(env, base);
+      if (base.includes('minimax')) return await this.minimax(env, base);
       return { unsupported: true };
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) };
@@ -186,10 +188,137 @@ export class UsageService {
   }
 
   /**
-   * Codex subscription limits: the backend endpoint rejects external calls,
-   * but codex emits rate-limit snapshots in its JSON event stream. Scan the
-   * most recent codex run logs for the latest snapshot.
+   * z.ai / Zhipu GLM coding-plan quota (approach learned from CodexBar):
+   * GET {host}/api/monitor/usage/quota/limit with the API token.
    */
+  private async zai(env: Record<string, string>, base: string): Promise<UsageResult> {
+    const key = env.ANTHROPIC_AUTH_TOKEN ?? env.ZAI_API_KEY;
+    if (!key) return { unsupported: true, reason: 'no-key' };
+    const host = base.includes('bigmodel.cn') ? 'https://open.bigmodel.cn' : 'https://api.z.ai';
+    const res = await fetch(`${host}/api/monitor/usage/quota/limit`, {
+      headers: { authorization: `Bearer ${key}`, accept: 'application/json' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return { error: `z.ai quota endpoint: HTTP ${res.status}` };
+    const json = (await res.json()) as {
+      data?: {
+        planName?: string;
+        plan?: string;
+        limits?: Array<{
+          type?: string;
+          percentage?: number;
+          usage?: number;
+          currentValue?: number;
+          remaining?: number;
+          nextResetTime?: number;
+        }>;
+      };
+    };
+    const limits = json.data?.limits ?? [];
+    const entries: UsageEntry[] = [];
+    for (const limit of limits) {
+      let usedPercent = limit.percentage;
+      if (usedPercent == null && limit.usage && limit.usage > 0) {
+        const used =
+          limit.remaining != null ? limit.usage - limit.remaining : (limit.currentValue ?? 0);
+        usedPercent = Math.max(0, Math.min(100, (used / limit.usage) * 100));
+      }
+      if (usedPercent == null) continue;
+      entries.push({
+        label: limit.type === 'TOKENS_LIMIT' ? 'tokensWindow' : 'timeWindow',
+        usedPercent,
+        resetsAt: limit.nextResetTime ? new Date(limit.nextResetTime).toISOString() : null,
+      });
+    }
+    const plan = json.data?.planName ?? json.data?.plan;
+    if (plan && entries[0]) entries[0].note = plan;
+    if (!entries.length) return { error: 'no quota windows in z.ai response' };
+    return { entries, fetchedAt: Date.now() };
+  }
+
+  /**
+   * MiniMax coding-plan remains (approach learned from CodexBar):
+   * GET {api-host}/v1/api/openplatform/coding_plan/remains with the key.
+   */
+  private async minimax(env: Record<string, string>, base: string): Promise<UsageResult> {
+    const key = env.ANTHROPIC_AUTH_TOKEN ?? env.MINIMAX_API_KEY;
+    if (!key) return { unsupported: true, reason: 'no-key' };
+    const host = base.includes('minimaxi.com') ? 'https://api.minimaxi.com' : 'https://api.minimax.io';
+    const res = await fetch(`${host}/v1/api/openplatform/coding_plan/remains`, {
+      headers: { authorization: `Bearer ${key}`, accept: 'application/json' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return { error: `minimax remains endpoint: HTTP ${res.status}` };
+    const json = (await res.json()) as {
+      plan_name?: string;
+      current_subscribe_title?: string;
+      model_remains?: Array<{
+        model_name?: string;
+        current_interval_total_count?: number;
+        current_interval_usage_count?: number;
+        current_interval_remaining_percent?: number;
+        end_time?: number;
+        current_weekly_total_count?: number;
+        current_weekly_usage_count?: number;
+        current_weekly_remaining_percent?: number;
+        weekly_end_time?: number;
+      }>;
+    };
+    const entries: UsageEntry[] = [];
+    const epochToIso = (v?: number) =>
+      v ? new Date(v > 10_000_000_000 ? v : v * 1000).toISOString() : null;
+    for (const m of (json.model_remains ?? []).slice(0, 3)) {
+      const intervalPct =
+        m.current_interval_remaining_percent != null
+          ? 100 - m.current_interval_remaining_percent
+          : m.current_interval_total_count
+            ? ((m.current_interval_usage_count ?? 0) / m.current_interval_total_count) * 100
+            : null;
+      if (intervalPct != null) {
+        entries.push({
+          label: 'fiveHour',
+          usedPercent: intervalPct,
+          resetsAt: epochToIso(m.end_time),
+          note: m.model_name,
+        });
+      }
+      const weeklyPct =
+        m.current_weekly_remaining_percent != null
+          ? 100 - m.current_weekly_remaining_percent
+          : m.current_weekly_total_count
+            ? ((m.current_weekly_usage_count ?? 0) / m.current_weekly_total_count) * 100
+            : null;
+      if (weeklyPct != null) {
+        entries.push({
+          label: 'sevenDay',
+          usedPercent: weeklyPct,
+          resetsAt: epochToIso(m.weekly_end_time),
+          note: m.model_name,
+        });
+      }
+    }
+    const plan = json.current_subscribe_title ?? json.plan_name;
+    if (plan && entries[0]) entries[0].note = `${plan}${entries[0].note ? ` · ${entries[0].note}` : ''}`;
+    if (!entries.length) return { error: 'no model remains in minimax response' };
+    return { entries, fetchedAt: Date.now() };
+  }
+
+  /**
+   * Codex subscription: OAuth credentials from ~/.codex/auth.json, refreshed
+   * via auth.openai.com when stale/rejected (flow learned from CodexBar),
+   * then GET chatgpt.com/backend-api/wham/usage. Falls back to scanning run
+   * logs for rate-limit snapshots.
+   */
+  private async codex(profile: ProviderProfile): Promise<UsageResult> {
+    try {
+      const result = await codexOauthUsage();
+      if (result) return result;
+    } catch {
+      /* fall back to log scan */
+    }
+    return this.codexFromLogs(profile);
+  }
+
   private codexFromLogs(profile: ProviderProfile): UsageResult {
     const runs = this.runStore
       .listRunning()
@@ -255,6 +384,137 @@ function scanLogForRateLimits(logPath: string): UsageEntry[] | null {
     }
   }
   return null;
+}
+
+/* ----------------------------- Codex OAuth ----------------------------- */
+/* Flow ported from steipete/CodexBar (CodexTokenRefresher/CodexOAuthUsageFetcher). */
+
+const CODEX_OAUTH_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
+const CODEX_REFRESH_AFTER_MS = 8 * 24 * 3_600_000;
+
+interface CodexAuthFile {
+  auth_mode?: string;
+  tokens?: {
+    access_token?: string;
+    refresh_token?: string;
+    id_token?: string;
+    account_id?: string;
+  };
+  last_refresh?: string;
+  [key: string]: unknown;
+}
+
+function codexAuthPath(): string {
+  const home = process.env.CODEX_HOME ?? path.join(os.homedir(), '.codex');
+  return path.join(home, 'auth.json');
+}
+
+async function codexOauthUsage(): Promise<UsageResult | null> {
+  const authFile = codexAuthPath();
+  let auth: CodexAuthFile;
+  try {
+    auth = JSON.parse(fs.readFileSync(authFile, 'utf8')) as CodexAuthFile;
+  } catch {
+    return null; // no codex login on this machine
+  }
+  let tokens = auth.tokens;
+  if (!tokens?.access_token) return null;
+
+  const lastRefresh = auth.last_refresh ? Date.parse(auth.last_refresh) : 0;
+  if (Date.now() - lastRefresh > CODEX_REFRESH_AFTER_MS && tokens.refresh_token) {
+    tokens = (await codexRefreshTokens(authFile, auth)) ?? tokens;
+  }
+
+  let res = await codexUsageRequest(tokens);
+  if (res.status === 401 && tokens.refresh_token) {
+    const refreshed = await codexRefreshTokens(authFile, auth);
+    if (!refreshed) return { error: 'codex token refresh failed — run `codex` to log in again' };
+    tokens = refreshed;
+    res = await codexUsageRequest(tokens);
+  }
+  if (!res.ok) return { error: `codex usage endpoint: HTTP ${res.status}` };
+
+  const data = (await res.json()) as {
+    plan_type?: string;
+    rate_limit?: {
+      primary_window?: { used_percent?: number; reset_at?: number };
+      secondary_window?: { used_percent?: number; reset_at?: number };
+    };
+    credits?: { has_credits?: boolean; unlimited?: boolean; balance?: number | string };
+  };
+  const entries: UsageEntry[] = [];
+  const epochToIso = (v?: number) =>
+    v ? new Date(v > 10_000_000_000 ? v : v * 1000).toISOString() : null;
+  const windows: ['primary_window' | 'secondary_window', string][] = [
+    ['primary_window', 'fiveHour'],
+    ['secondary_window', 'sevenDay'],
+  ];
+  for (const [key, label] of windows) {
+    const w = data.rate_limit?.[key];
+    if (w && typeof w.used_percent === 'number') {
+      entries.push({ label, usedPercent: w.used_percent, resetsAt: epochToIso(w.reset_at) });
+    }
+  }
+  if (data.credits?.has_credits && !data.credits.unlimited && data.credits.balance != null) {
+    entries.push({ label: 'credits', text: String(data.credits.balance) });
+  }
+  if (data.plan_type && entries[0]) entries[0].note = `plan: ${data.plan_type}`;
+  if (!entries.length) return { error: 'no rate limit windows in codex response' };
+  return { entries, fetchedAt: Date.now() };
+}
+
+async function codexUsageRequest(tokens: NonNullable<CodexAuthFile['tokens']>) {
+  return fetch('https://chatgpt.com/backend-api/wham/usage', {
+    headers: {
+      authorization: `Bearer ${tokens.access_token}`,
+      accept: 'application/json',
+      'user-agent': 'agent-kanban-board',
+      ...(tokens.account_id ? { 'ChatGPT-Account-Id': tokens.account_id } : {}),
+    },
+    signal: AbortSignal.timeout(10_000),
+  });
+}
+
+/** Refresh and persist codex OAuth tokens (same write-back the CLI does). */
+async function codexRefreshTokens(
+  authFile: string,
+  auth: CodexAuthFile,
+): Promise<CodexAuthFile['tokens'] | null> {
+  const refreshToken = auth.tokens?.refresh_token;
+  if (!refreshToken) return null;
+  try {
+    const res = await fetch('https://auth.openai.com/oauth/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        client_id: CODEX_OAUTH_CLIENT_ID,
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        scope: 'openid profile email',
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      access_token?: string;
+      refresh_token?: string;
+      id_token?: string;
+    };
+    const tokens = {
+      ...auth.tokens,
+      access_token: json.access_token ?? auth.tokens?.access_token,
+      refresh_token: json.refresh_token ?? refreshToken,
+      id_token: json.id_token ?? auth.tokens?.id_token,
+    };
+    fs.writeFileSync(
+      authFile,
+      JSON.stringify({ ...auth, tokens, last_refresh: new Date().toISOString() }, null, 2),
+      { mode: 0o600 },
+    );
+    return tokens;
+  } catch {
+    return null;
+  }
 }
 
 async function readClaudeOauthToken(): Promise<string | null> {

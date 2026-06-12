@@ -212,10 +212,12 @@ export const en: Record<string, string> = {
   'usage.window.extraCredits': 'Extra usage credits',
   'usage.window.credits': 'Credits',
   'usage.window.balance': 'Balance',
+  'usage.window.tokensWindow': 'Token quota',
+  'usage.window.timeWindow': 'Time quota',
   'usage.unsupported': 'This vendor exposes no usage API that I know of.',
   'usage.unsupported.apiKey': 'API-key billing has no subscription windows; check the vendor console for spend.',
   'usage.unsupported.noLogin': 'No Claude CLI login found on this machine (run `claude` once to sign in).',
-  'usage.unsupported.codex': 'Codex only reports limits inside its event stream — run one codex task first, then check again.',
+  'usage.unsupported.codex': 'No codex login found (run `codex` to sign in) and no recent codex runs to read limits from.',
   'usage.unsupported.noKey': 'Add the API key first — usage is read with it.',
 
   'settings.roles': 'Role → model priority',
