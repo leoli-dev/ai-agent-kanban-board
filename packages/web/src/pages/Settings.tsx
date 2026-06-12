@@ -505,12 +505,15 @@ function RolesSection() {
   });
 
   const byId = new Map(providers.map((p) => [p.id, p]));
+  // The orchestrator is plain code (scheduling/watchdog/retries) — it never
+  // calls a model, so it has no place in the role→model mapping.
+  const configurableRoles = AGENT_ROLES.filter((r) => r !== 'orchestrator');
 
   return (
     <section>
       <SectionHeader title={t('settings.roles')} help={t('settings.roles.help')} />
       <div className="space-y-2">
-        {AGENT_ROLES.map((role) => {
+        {configurableRoles.map((role) => {
           const entry = roles.find((r) => r.role === role);
           const ids = entry?.profileIds ?? [];
           const unused = providers.filter((p) => !ids.includes(p.id));
