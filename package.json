@@ -1,0 +1,19 @@
+{
+  "name": "agent-kanban-board",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,green \"pnpm --filter @akb/server dev\" \"pnpm --filter @akb/web dev\"",
+    "build": "pnpm --filter @akb/web build",
+    "start": "NODE_ENV=production pnpm --filter @akb/server start",
+    "test": "pnpm --filter @akb/server test",
+    "typecheck": "pnpm -r exec tsc --noEmit"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.0"
+  }
+}
