@@ -11,6 +11,7 @@ import {
 import { api, ApiError } from '../lib/api';
 import { LANGS, useI18n, useT } from '../lib/i18n';
 import { IconCheck, IconPlus, IconX } from '../components/icons';
+import { ProviderBuilder } from '../components/ProviderBuilder';
 
 export default function Settings() {
   const t = useT();
@@ -80,77 +81,6 @@ const emptyDraft = (): ProfileDraft => ({
   notes: '',
 });
 
-/** Quick-start templates for common providers. */
-const PRESETS: { id: string; label: string; draft: () => ProfileDraft }[] = [
-  {
-    id: 'anthropic',
-    label: 'Anthropic (Claude)',
-    draft: () => ({
-      ...emptyDraft(),
-      name: 'anthropic',
-      env: [{ key: 'ANTHROPIC_API_KEY', value: '${SECRET:ANTHROPIC_API_KEY}' }],
-    }),
-  },
-  {
-    id: 'deepseek',
-    label: 'DeepSeek (via Claude Code)',
-    draft: () => ({
-      ...emptyDraft(),
-      name: 'deepseek',
-      modelLabel: 'deepseek-v4-pro',
-      env: [
-        { key: 'ANTHROPIC_BASE_URL', value: 'https://api.deepseek.com/anthropic' },
-        { key: 'ANTHROPIC_AUTH_TOKEN', value: '${SECRET:DEEPSEEK_API_KEY}' },
-        { key: 'ANTHROPIC_MODEL', value: 'deepseek-v4-pro[1m]' },
-        { key: 'ANTHROPIC_DEFAULT_OPUS_MODEL', value: 'deepseek-v4-pro[1m]' },
-        { key: 'ANTHROPIC_DEFAULT_SONNET_MODEL', value: 'deepseek-v4-pro[1m]' },
-        { key: 'ANTHROPIC_DEFAULT_HAIKU_MODEL', value: 'deepseek-v4-flash' },
-        { key: 'CLAUDE_CODE_SUBAGENT_MODEL', value: 'deepseek-v4-flash' },
-        { key: 'CLAUDE_CODE_EFFORT_LEVEL', value: 'max' },
-        { key: 'API_TIMEOUT_MS', value: '3000000' },
-      ],
-    }),
-  },
-  {
-    id: 'minimax',
-    label: 'MiniMax (via Claude Code)',
-    draft: () => ({
-      ...emptyDraft(),
-      name: 'minimax',
-      env: [
-        { key: 'ANTHROPIC_BASE_URL', value: 'https://api.minimax.io/anthropic' },
-        { key: 'ANTHROPIC_AUTH_TOKEN', value: '${SECRET:MINIMAX_API_KEY}' },
-        { key: 'API_TIMEOUT_MS', value: '3000000' },
-      ],
-    }),
-  },
-  {
-    id: 'local',
-    label: 'Local LLM (ollama / omlx / mlx)',
-    draft: () => ({
-      ...emptyDraft(),
-      name: 'local-llm',
-      env: [
-        { key: 'ANTHROPIC_BASE_URL', value: 'http://127.0.0.1:8000' },
-        { key: 'ANTHROPIC_AUTH_TOKEN', value: 'local' },
-        { key: 'ANTHROPIC_MODEL', value: 'your-model-name' },
-        { key: 'API_TIMEOUT_MS', value: '3000000' },
-      ],
-    }),
-  },
-  {
-    id: 'codex',
-    label: 'Codex (OpenAI)',
-    draft: () => ({
-      ...emptyDraft(),
-      name: 'codex',
-      engine: 'codex',
-      modelLabel: 'gpt-5.3-codex',
-      env: [{ key: 'CODEX_SANDBOX', value: 'workspace-write' }],
-    }),
-  },
-];
-
 interface TestOutcome {
   ok: boolean;
   text: string;
@@ -160,6 +90,7 @@ function ProvidersSection() {
   const t = useT();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<ProfileDraft | null>(null);
+  const [building, setBuilding] = useState(false);
   const [testResult, setTestResult] = useState<Record<string, TestOutcome | 'pending'>>({});
 
   const { data: providers = [] } = useQuery({
@@ -225,7 +156,13 @@ function ProvidersSection() {
     <section>
       <div className="flex items-start justify-between gap-3">
         <SectionHeader title={t('settings.providers')} help={t('settings.providers.help')} />
-        <button onClick={() => setDraft(emptyDraft())} className="btn btn-primary shrink-0 px-3 py-1.5 text-xs">
+        <button
+          onClick={() => {
+            setDraft(null);
+            setBuilding(true);
+          }}
+          className="btn btn-primary shrink-0 px-3 py-1.5 text-xs"
+        >
           <IconPlus width={13} height={13} /> {t('settings.providers.add')}
         </button>
       </div>
@@ -327,31 +264,21 @@ function ProvidersSection() {
         )}
       </ul>
 
+      {building && !draft && (
+        <ProviderBuilder
+          onClose={() => setBuilding(false)}
+          onCustom={() => {
+            setBuilding(false);
+            setDraft(emptyDraft());
+          }}
+        />
+      )}
+
       {draft && (
         <div className="card mt-3 border-accent-500/30 p-4">
           <h3 className="mb-3 text-sm font-semibold text-ink-100">
             {draft.id ? t('settings.provider.edit') : t('settings.provider.new')}
           </h3>
-
-          {!draft.id && (
-            <div className="mb-4">
-              <p className="mb-1.5 text-xs text-ink-400">{t('settings.provider.preset')}</p>
-              <div className="flex flex-wrap gap-1.5">
-                <button onClick={() => setDraft(emptyDraft())} className="btn btn-ghost px-2.5 py-1 text-xs">
-                  {t('settings.provider.preset.custom')}
-                </button>
-                {PRESETS.map((preset) => (
-                  <button
-                    key={preset.id}
-                    onClick={() => setDraft(preset.draft())}
-                    className="btn btn-ghost px-2.5 py-1 text-xs"
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-xs text-ink-400">

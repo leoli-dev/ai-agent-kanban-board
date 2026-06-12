@@ -36,6 +36,8 @@ export const codexAdapter: EngineAdapter = {
       args.push('-c', `sandbox_workspace_write.writable_roots=${JSON.stringify(req.addDirs)}`);
     }
     if (req.profile.modelLabel) args.push('-m', req.profile.modelLabel);
+    const effort = req.profile.resolvedEnv.CODEX_REASONING_EFFORT;
+    if (effort) args.push('-c', `model_reasoning_effort="${effort}"`);
     for (const img of req.images ?? []) args.push('-i', img);
 
     // codex exec has no system-prompt flag; fold the contract into the prompt.
