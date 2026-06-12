@@ -198,7 +198,7 @@ export const DEFAULT_SETTINGS: Settings = {
   wallClockLimitMin: 60,
   maxRetries: 2,
   maxBounces: 2,
-  concurrency: 1,
+  concurrency: 2,
   maxQaRounds: 5,
   autoAdvanceReview: true,
   autoAdvanceTest: true,

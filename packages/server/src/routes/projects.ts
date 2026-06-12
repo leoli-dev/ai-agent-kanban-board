@@ -9,7 +9,7 @@ import type { InputKind } from '@akb/shared';
 import { schema } from '../db/index.js';
 import { toPlanDocument, toProject, toProjectInput } from '../db/mappers.js';
 import type { AppContext } from '../context.js';
-import { initRepoWithBaseline } from '../workspace/git.js';
+import { initRepoWithBaseline, pruneWorktrees } from '../workspace/git.js';
 import { scaffoldWorkspace, slugify, workspacePaths } from '../workspace/workspace.js';
 
 const CreateProjectBody = z.object({
@@ -153,6 +153,8 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     ctx.db.delete(schema.planDocuments).where(eq(schema.planDocuments.projectId, id)).run();
     ctx.db.delete(schema.plannerSessions).where(eq(schema.plannerSessions.projectId, id)).run();
     fs.rmSync(row.workspacePath, { recursive: true, force: true });
+    // Worktree dirs lived inside the workspace; drop their stale registrations.
+    await pruneWorktrees(row.targetRepoPath).catch(() => {});
     reply.code(204);
   });
 

@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { TASK_STATUSES } from '@akb/shared';
 import { schema } from '../db/index.js';
 import { getTask, updateTask } from '../db/task-store.js';
-import { toTask } from '../db/mappers.js';
+import { toProject, toTask } from '../db/mappers.js';
 import type { AppContext } from '../context.js';
 
 export async function taskRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
@@ -46,6 +46,14 @@ export async function taskRoutes(app: FastifyInstance, ctx: AppContext): Promise
     if (!task) return reply.code(404).send({ error: 'task not found' });
     for (const run of ctx.runStore.listByTask(id)) {
       if (run.status === 'running') ctx.runner.kill(run.id);
+    }
+    const projectRow = ctx.db
+      .select()
+      .from(schema.projects)
+      .where(eq(schema.projects.id, task.projectId))
+      .get();
+    if (projectRow) {
+      void ctx.orchestrator.cleanupTaskWorktree(toProject(projectRow), task).catch(() => {});
     }
     ctx.db.delete(schema.tasks).where(eq(schema.tasks.id, id)).run();
     ctx.db.delete(schema.taskDependencies).where(eq(schema.taskDependencies.taskId, id)).run();

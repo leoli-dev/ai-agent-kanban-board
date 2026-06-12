@@ -58,6 +58,107 @@ export async function currentBranch(repoPath: string): Promise<string> {
   return status.current ?? '';
 }
 
+/**
+ * Worktree helpers for parallel task execution: each task gets its own
+ * branch + worktree; an "integration" worktree holds the project branch so
+ * the user's own checkout is never touched.
+ */
+export async function ensureWorktree(
+  repoPath: string,
+  dir: string,
+  branch: string,
+  base: string,
+): Promise<void> {
+  if (fs.existsSync(path.join(dir, '.git'))) return;
+  fs.mkdirSync(path.dirname(dir), { recursive: true });
+  const git = simpleGit(repoPath);
+  await git.raw(['worktree', 'prune']).catch(() => {});
+  const branches = await git.branchLocal();
+  if (branches.all.includes(branch)) {
+    await git.raw(['worktree', 'add', dir, branch]);
+  } else {
+    await git.raw(['worktree', 'add', '-b', branch, dir, base]);
+  }
+}
+
+export async function removeWorktree(repoPath: string, dir: string): Promise<void> {
+  const git = simpleGit(repoPath);
+  try {
+    await git.raw(['worktree', 'remove', '--force', dir]);
+  } catch {
+    fs.rmSync(dir, { recursive: true, force: true });
+    await git.raw(['worktree', 'prune']).catch(() => {});
+  }
+}
+
+/**
+ * A branch can only be checked out in one worktree: if the user's main
+ * checkout sits on `branch` (legacy single-branch mode), move it off —
+ * preferably to main/master, otherwise detach.
+ */
+export async function ensureNotOnBranch(repoPath: string, branch: string): Promise<void> {
+  const git = simpleGit(repoPath);
+  const status = await git.status();
+  if (status.current !== branch) return;
+  // Leftovers from an interrupted agent run under legacy single-branch mode
+  // belong to the agent branch — commit them before switching away.
+  if (!status.isClean()) {
+    await commitAll(repoPath, 'wip: leftover agent work (migrated to worktree mode)');
+  }
+  const locals = await git.branchLocal();
+  const fallback = ['main', 'master'].find((b) => locals.all.includes(b));
+  if (fallback) {
+    await git.checkout(fallback);
+  } else {
+    await git.raw(['checkout', '--detach']);
+  }
+}
+
+export async function pruneWorktrees(repoPath: string): Promise<void> {
+  await simpleGit(repoPath)
+    .raw(['worktree', 'prune'])
+    .catch(() => {});
+}
+
+export async function deleteBranch(repoPath: string, branch: string): Promise<void> {
+  await simpleGit(repoPath)
+    .raw(['branch', '-D', branch])
+    .catch(() => {});
+}
+
+/** Merge `branch` into the branch checked out in `worktreeDir`. */
+export async function mergeIntoCurrent(
+  worktreeDir: string,
+  branch: string,
+  message: string,
+): Promise<'ok' | 'conflict'> {
+  const git = simpleGit(worktreeDir);
+  try {
+    await git.raw(['merge', '--no-ff', '-m', message, branch]);
+    return 'ok';
+  } catch {
+    await git.raw(['merge', '--abort']).catch(() => {});
+    return 'conflict';
+  }
+}
+
+/**
+ * Merge the base branch into a task worktree before (re)starting work.
+ * On conflict the markers are left in place for the coder agent to resolve.
+ */
+export async function mergeBaseLeaveConflicts(
+  worktreeDir: string,
+  baseBranch: string,
+): Promise<'ok' | 'conflict'> {
+  const git = simpleGit(worktreeDir);
+  try {
+    await git.raw(['merge', baseBranch, '-m', `merge ${baseBranch} into task branch`]);
+    return 'ok';
+  } catch {
+    return 'conflict';
+  }
+}
+
 /** Commit everything in the working tree (used as a safety net after agent runs). */
 export async function commitAll(repoPath: string, message: string): Promise<boolean> {
   const git = simpleGit(repoPath);

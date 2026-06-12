@@ -29,7 +29,7 @@ export const PLAN_JSON_CONTRACT = `{
       "title": "imperative step title",
       "description": "detailed instructions a coding sub-agent can execute independently",
       "acceptanceCriteria": ["verifiable criterion", "..."],
-      "dependsOn": ["ids of steps that must complete first"],
+      "dependsOn": ["ONLY ids of steps whose output this step strictly needs — leave empty for independent steps, they run in parallel"],
       "complexity": "low | medium | high"
     }
   ]

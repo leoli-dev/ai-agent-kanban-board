@@ -267,7 +267,7 @@ export const zh: Record<string, string> = {
   'settings.bounces': '最大打回次数',
   'settings.bounces.help': '审查/测试可以把任务退回编码智能体的次数上限。',
   'settings.concurrency': '并行任务数',
-  'settings.concurrency.help': '同时运行的任务数。智能体共享一个分支，除非任务互不相干，否则保持 1。',
+  'settings.concurrency.help': '互相独立的任务会同时执行：每个智能体在自己的 git worktree/分支里隔离工作，完成后自动合并。你自己的工作目录不会被碰。',
   'settings.qaRounds': '最大提问轮数',
   'settings.qaRounds.help': '规划师在必须给出计划前最多可以提问的轮数。',
   'settings.autoReview': '自动审查',

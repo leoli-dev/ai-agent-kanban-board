@@ -13,7 +13,15 @@ import type { SettingsStore } from '../db/settings-store.js';
 import type { AgentRunner } from '../runner/agent-runner.js';
 import type { Notifier } from '../notify/notifier.js';
 import type { WsHub } from '../ws/hub.js';
-import { commitAll, currentBranch, ensureBranch, isDirty } from '../workspace/git.js';
+import {
+  commitAll,
+  deleteBranch,
+  ensureNotOnBranch,
+  ensureWorktree,
+  mergeBaseLeaveConflicts,
+  mergeIntoCurrent,
+  removeWorktree,
+} from '../workspace/git.js';
 import { workspacePaths } from '../workspace/workspace.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -47,10 +55,47 @@ interface OrchestratorDeps {
  */
 export class Orchestrator {
   private activeTasks = new Set<string>();
+  private integrating = new Set<string>();
   private timer: NodeJS.Timeout | null = null;
   private evaluating = false;
+  /** Per-project promise chain: serializes worktree setup + merges, which
+   * would otherwise race on the repo's index/worktree locks. */
+  private gitLocks = new Map<string, Promise<unknown>>();
 
   constructor(private deps: OrchestratorDeps) {}
+
+  private withGitLock<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.gitLocks.get(projectId) ?? Promise.resolve();
+    const next = prev.then(fn, fn);
+    this.gitLocks.set(
+      projectId,
+      next.catch(() => {}),
+    );
+    return next;
+  }
+
+  /* ---- worktree layout: each task works on its own branch in an isolated
+     worktree; the integration worktree holds the project branch so the
+     user's own checkout is never touched. ---- */
+
+  private worktreeDir(project: Project, taskId: string): string {
+    return path.join(workspacePaths(this.deps.workspacesDir, project.id).root, 'worktrees', taskId);
+  }
+
+  private integrationDir(project: Project): string {
+    return this.worktreeDir(project, '_integration');
+  }
+
+  private taskBranch(project: Project, task: Task): string {
+    return `${project.gitBranch}--task-${task.planStepId ?? task.id}`;
+  }
+
+  /** Remove a task's worktree + branch (task finished, failed, or deleted). */
+  async cleanupTaskWorktree(project: Project, task: Task): Promise<void> {
+    const dir = this.worktreeDir(project, task.id);
+    if (fs.existsSync(dir)) await removeWorktree(project.targetRepoPath, dir);
+    await deleteBranch(project.targetRepoPath, this.taskBranch(project, task));
+  }
 
   start(): void {
     // Tasks left in wip by a previous server process have no live agent: re-queue.
@@ -93,7 +138,26 @@ export class Orchestrator {
     for (const project of projects) {
       const tasks = listProjectTasks(this.deps.db, project.id);
 
-      if (tasks.length > 0 && tasks.every((t) => t.status === 'done')) {
+      // Done tasks whose branch hasn't been merged back yet (covers both the
+      // automated pipeline and manual drags to Done).
+      for (const task of tasks) {
+        if (
+          task.status === 'done' &&
+          !this.integrating.has(task.id) &&
+          fs.existsSync(this.worktreeDir(project, task.id))
+        ) {
+          this.integrating.add(task.id);
+          void this.integrateTask(project, task).finally(() => {
+            this.integrating.delete(task.id);
+            this.nudge();
+          });
+        }
+      }
+
+      const allMerged = tasks.every(
+        (t) => t.status === 'done' && !fs.existsSync(this.worktreeDir(project, t.id)),
+      );
+      if (tasks.length > 0 && allMerged) {
         this.completeProject(project);
         continue;
       }
@@ -123,20 +187,94 @@ export class Orchestrator {
     }
   }
 
+  /**
+   * Prepare the task's isolated worktree: integration branch first, then the
+   * task branch from it; on re-runs, merge fresh integrated work into the
+   * task branch (conflicts are left for the coder to resolve).
+   */
+  private prepareTaskWorktree(
+    project: Project,
+    task: Task,
+  ): Promise<{ cwd: string; branch: string; mergeConflict: boolean } | { error: string }> {
+    return this.withGitLock(project.id, () => this.prepareTaskWorktreeLocked(project, task));
+  }
+
+  private async prepareTaskWorktreeLocked(
+    project: Project,
+    task: Task,
+  ): Promise<{ cwd: string; branch: string; mergeConflict: boolean } | { error: string }> {
+    if (!project.gitBranch) return { error: 'project has no agent branch configured' };
+    try {
+      // Legacy migration: pre-worktree projects left the user's checkout on
+      // the agent branch, which would block the integration worktree.
+      await ensureNotOnBranch(project.targetRepoPath, project.gitBranch);
+      await ensureWorktree(
+        project.targetRepoPath,
+        this.integrationDir(project),
+        project.gitBranch,
+        'HEAD',
+      );
+      const dir = this.worktreeDir(project, task.id);
+      const branch = this.taskBranch(project, task);
+      const existed = fs.existsSync(dir);
+      await ensureWorktree(project.targetRepoPath, dir, branch, project.gitBranch);
+      let mergeConflict = false;
+      if (existed) {
+        mergeConflict = (await mergeBaseLeaveConflicts(dir, project.gitBranch)) === 'conflict';
+      }
+      return { cwd: dir, branch, mergeConflict };
+    } catch (err) {
+      return { error: `failed to prepare task worktree: ${String(err)}` };
+    }
+  }
+
+  /** Merge a finished task's branch into the project branch. */
+  private integrateTask(project: Project, task: Task): Promise<void> {
+    return this.withGitLock(project.id, () => this.integrateTaskLocked(project, task));
+  }
+
+  private async integrateTaskLocked(project: Project, task: Task): Promise<void> {
+    try {
+      const integration = this.integrationDir(project);
+      await ensureWorktree(project.targetRepoPath, integration, project.gitBranch!, 'HEAD');
+      const result = await mergeIntoCurrent(
+        integration,
+        this.taskBranch(project, task),
+        `merge task(${task.planStepId ?? task.id}): ${task.title}`,
+      );
+      if (result === 'ok') {
+        await this.cleanupTaskWorktree(project, task);
+        return;
+      }
+      // Conflict with work merged in the meantime: send the task back; the
+      // next attempt pre-merges the new base and the coder resolves it.
+      fs.writeFileSync(
+        path.join(
+          workspacePaths(this.deps.workspacesDir, project.id).artifacts,
+          `feedback-${task.id}.md`,
+        ),
+        `Your branch conflicts with work merged after you finished. The new base has been merged into your branch with conflict markers — resolve them, re-verify the acceptance criteria, and commit.`,
+      );
+      await this.handleTaskFailure(project, task, 'merge conflict with integrated work');
+    } catch (err) {
+      await this.handleTaskFailure(project, task, `integration failed: ${String(err)}`);
+    }
+  }
+
   /** coder -> (reviewer) -> (tester) for a single task, honoring auto-advance. */
   private async runTaskPipeline(project: Project, task: Task): Promise<void> {
     const ws = workspacePaths(this.deps.workspacesDir, project.id);
     try {
-      const prepError = await this.prepareRepo(project);
-      if (prepError) {
+      const prep = await this.prepareTaskWorktree(project, task);
+      if ('error' in prep) {
         updateTask(this.deps.db, this.deps.hub, task.id, {
           status: 'blocked',
-          blockedReason: prepError,
+          blockedReason: prep.error,
         });
         await this.deps.notifier.notify(
           'task_failed',
           `Task blocked: ${task.title}`,
-          prepError,
+          prep.error,
           project.id,
         );
         return;
@@ -146,8 +284,8 @@ export class Orchestrator {
 
       const outcome = await this.deps.runner.run({
         role: 'coder',
-        prompt: this.buildCoderPrompt(project, task, ws.artifacts),
-        cwd: project.targetRepoPath,
+        prompt: this.buildCoderPrompt(project, task, ws.artifacts, prep),
+        cwd: prep.cwd,
         logDir: ws.logs,
         taskId: task.id,
         projectId: project.id,
@@ -159,12 +297,12 @@ export class Orchestrator {
       if (outcome.ok) {
         // Safety net: commit anything the agent left uncommitted.
         try {
-          await commitAll(project.targetRepoPath, `task(${task.planStepId ?? task.id}): ${task.title} (auto-commit)`);
+          await commitAll(prep.cwd, `task(${task.planStepId ?? task.id}): ${task.title} (auto-commit)`);
         } catch {
           /* repo state issues surface in review */
         }
         updateTask(this.deps.db, this.deps.hub, task.id, { status: 'to_review' });
-        await this.runReviewAndTestStages(project, task, ws.artifacts);
+        await this.runReviewAndTestStages(project, task, ws.artifacts, prep.cwd);
         return;
       }
 
@@ -200,6 +338,7 @@ export class Orchestrator {
     project: Project,
     task: Task,
     artifactsDir: string,
+    cwd: string,
   ): Promise<void> {
     const settings = this.deps.settings.get();
 
@@ -210,6 +349,7 @@ export class Orchestrator {
     const review = await this.runVerdictAgent({
       project,
       task,
+      cwd,
       role: 'reviewer',
       contract: REVIEWER_CONTRACT,
       filePath: reviewPath,
@@ -231,6 +371,7 @@ export class Orchestrator {
     const report = await this.runVerdictAgent({
       project,
       task,
+      cwd,
       role: 'tester',
       contract: TESTER_CONTRACT,
       filePath: reportPath,
@@ -250,6 +391,7 @@ export class Orchestrator {
   private async runVerdictAgent<T>(opts: {
     project: Project;
     task: Task;
+    cwd: string;
     role: 'reviewer' | 'tester';
     contract: string;
     filePath: string;
@@ -270,9 +412,10 @@ ${opts.task.description}
 ${opts.task.acceptanceCriteria.map((c) => `- ${c}`).join('\n') || '- (none)'}
 
 ## Context
-- Git branch with the work: ${opts.project.gitBranch}
-- Commits for this task use the prefix: task(${opts.task.planStepId ?? opts.task.id})`,
-        cwd: opts.project.targetRepoPath,
+- You are in the task's isolated worktree; its branch contains the work.
+- Commits for this task use the prefix: task(${opts.task.planStepId ?? opts.task.id})
+- The base branch (for diffing) is: ${opts.project.gitBranch}`,
+        cwd: opts.cwd,
         logDir: ws.logs,
         taskId: opts.task.id,
         projectId: opts.project.id,
@@ -366,7 +509,12 @@ ${opts.task.acceptanceCriteria.map((c) => `- ${c}`).join('\n') || '- (none)'}
     }
   }
 
-  private buildCoderPrompt(project: Project, task: Task, artifactsDir: string): string {
+  private buildCoderPrompt(
+    project: Project,
+    task: Task,
+    artifactsDir: string,
+    prep: { branch: string; mergeConflict: boolean },
+  ): string {
     const criteria = task.acceptanceCriteria.length
       ? task.acceptanceCriteria.map((c) => `- ${c}`).join('\n')
       : '- (none specified — use your judgement)';
@@ -407,30 +555,18 @@ ${task.description}
 
 ## Acceptance criteria
 ${criteria}
-${bounceContext}${retryContext}
+${bounceContext}${retryContext}${
+      prep.mergeConflict
+        ? `\n## Merge in progress\nThe base branch was merged into your task branch and left CONFLICT MARKERS in the tree. Resolve all conflicts first (keep both sides' intent), commit the merge, then complete the task.\n`
+        : ''
+    }
 ## Working agreement
-- Current git branch: ${project.gitBranch} (already checked out — stay on it)
+- You are working in an ISOLATED git worktree on branch: ${prep.branch} (already checked out — stay on it; other tasks run in parallel on their own branches and your work is merged automatically when done)
+- Work only inside this worktree. Prefer touching only the files this task is about — parallel tasks are merged with git.
 - Commit message format: task(${task.planStepId ?? task.id}): <what you did>
 - You may write progress notes to: ${artifactsDir}
 
 Begin.`;
-  }
-
-  /** Checkout/create the agent branch; refuse if user changes could be clobbered. */
-  private async prepareRepo(project: Project): Promise<string | null> {
-    if (!project.gitBranch) return 'project has no agent branch configured';
-    try {
-      const branch = await currentBranch(project.targetRepoPath);
-      if (branch !== project.gitBranch) {
-        if (await isDirty(project.targetRepoPath)) {
-          return `target repo has uncommitted changes on branch "${branch}" — commit or stash them first`;
-        }
-        await ensureBranch(project.targetRepoPath, project.gitBranch);
-      }
-      return null;
-    } catch (err) {
-      return `failed to prepare git branch: ${String(err)}`;
-    }
   }
 
   private completeProject(project: Project): void {

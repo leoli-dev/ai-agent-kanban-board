@@ -286,16 +286,73 @@ describe('Orchestrator (money test)', () => {
     expect(notifications.some((n) => n.type === 'task_failed')).toBe(true);
   }, 30_000);
 
-  it('blocks a task when the repo has uncommitted user changes', async () => {
+  it('runs tasks in isolated worktrees — a dirty user checkout never blocks', async () => {
     const f = makeFixture([{ id: 't1', deps: [] }]);
     addMockProfile(f.ctx, 'coder', scripts.success());
-    fs.writeFileSync(path.join(f.repo, 'dirty.txt'), 'uncommitted');
+    fs.writeFileSync(path.join(f.repo, 'dirty.txt'), 'uncommitted user work');
 
     f.orchestrator.start();
-    await waitFor(() => taskStatus(f.ctx, 't1') === 'blocked');
+    await waitFor(() => taskStatus(f.ctx, 't1') === 'to_review');
     f.orchestrator.stop();
 
-    const task = f.ctx.db.select().from(schema.tasks).where(eq(schema.tasks.id, 't1')).get()!;
-    expect(task.blockedReason).toContain('uncommitted');
+    // User's uncommitted file is untouched; agent worked in its own worktree.
+    expect(fs.readFileSync(path.join(f.repo, 'dirty.txt'), 'utf8')).toContain('user work');
+    expect(fs.existsSync(path.join(f.ctx.tmpDir, f.projectId, 'worktrees', 't1'))).toBe(true);
+  }, 30_000);
+
+  it('executes independent tasks in parallel and merges both into the project branch', async () => {
+    const f = makeFixture([
+      { id: 't1', deps: [] },
+      { id: 't2', deps: [] },
+    ]);
+    f.ctx.settings.update({ concurrency: 2 });
+    const wt = (taskId: string) => path.join(f.ctx.tmpDir, f.projectId, 'worktrees', taskId);
+    // Launch order within one evaluate pass is t1 then t2 (orderIndex).
+    // Slow the mocks down (500ms) so run windows demonstrably overlap.
+    const slowSuccess = (text: string, file: string, content: string) => {
+      const s = scripts.success(text, {
+        writeFiles: [{ path: file, content }],
+      });
+      s.events[s.events.length - 1]!.delayMs = 500;
+      return s;
+    };
+    addMockProfile(
+      f.ctx,
+      'coder',
+      phased(
+        [
+          slowSuccess('t1 done', path.join(wt('t1'), 'frontend.txt'), 'ui'),
+          slowSuccess('t2 done', path.join(wt('t2'), 'backend.txt'), 'api'),
+        ],
+        path.join(f.ctx.tmpDir, 'stateP'),
+      ),
+    );
+
+    f.orchestrator.start();
+    await waitFor(
+      () => taskStatus(f.ctx, 't1') === 'to_review' && taskStatus(f.ctx, 't2') === 'to_review',
+    );
+    // Both coders ran concurrently (overlapping run windows).
+    const r1 = f.ctx.runStore.listByTask('t1')[0]!;
+    const r2 = f.ctx.runStore.listByTask('t2')[0]!;
+    expect(r1.startedAt).toBeLessThan(r2.endedAt ?? Infinity);
+    expect(r2.startedAt).toBeLessThan(r1.endedAt ?? Infinity);
+
+    // Simulate manual review/test pass; integration merges both branches.
+    updateTask(f.ctx.db, f.ctx.hub, 't1', { status: 'done' });
+    updateTask(f.ctx.db, f.ctx.hub, 't2', { status: 'done' });
+    f.orchestrator.nudge();
+    await waitFor(
+      () =>
+        f.ctx.db.select().from(schema.projects).where(eq(schema.projects.id, f.projectId)).get()!
+          .status === 'done',
+    );
+    f.orchestrator.stop();
+
+    // Both files exist on the project branch.
+    const show = (file: string) =>
+      execSync(`git show agent/e2e:${file}`, { cwd: f.repo }).toString();
+    expect(show('frontend.txt')).toBe('ui');
+    expect(show('backend.txt')).toBe('api');
   }, 30_000);
 });

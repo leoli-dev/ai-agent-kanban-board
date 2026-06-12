@@ -267,7 +267,7 @@ export const en: Record<string, string> = {
   'settings.bounces': 'Max review bounces',
   'settings.bounces.help': 'How many times review/test can send a task back to the coder before giving up.',
   'settings.concurrency': 'Parallel tasks',
-  'settings.concurrency.help': 'Tasks running at once. Keep at 1 unless tasks touch disjoint files — agents share one branch.',
+  'settings.concurrency.help': 'Independent tasks run simultaneously, each agent in its own isolated git worktree/branch, merged automatically when done. Your own checkout is never touched.',
   'settings.qaRounds': 'Max Q&A rounds',
   'settings.qaRounds.help': 'Clarifying-question rounds the planner may ask before it must produce the plan.',
   'settings.autoReview': 'Auto review',
