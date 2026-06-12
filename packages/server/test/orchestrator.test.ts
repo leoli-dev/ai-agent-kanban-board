@@ -7,6 +7,7 @@ import { nanoid } from 'nanoid';
 import { schema } from '../src/db/index.js';
 import { Notifier } from '../src/notify/notifier.js';
 import { Orchestrator } from '../src/orchestrator/orchestrator.js';
+import { ReportService } from '../src/reports/report-service.js';
 import { updateTask } from '../src/db/task-store.js';
 import { scaffoldWorkspace } from '../src/workspace/workspace.js';
 import { addMockProfile, makeTestCtx, scripts, type MockScript, type TestCtx } from './helpers.js';
@@ -70,6 +71,13 @@ function makeFixture(taskSpecs: { id: string; deps: string[] }[]): Fixture {
   });
 
   const notifier = new Notifier(ctx.db, ctx.hub, ctx.settings);
+  const reports = new ReportService({
+    db: ctx.db,
+    runStore: ctx.runStore,
+    registry: ctx.registry,
+    runner: ctx.runner,
+    workspacesDir: ctx.tmpDir,
+  });
   const orchestrator = new Orchestrator({
     db: ctx.db,
     hub: ctx.hub,
@@ -77,6 +85,7 @@ function makeFixture(taskSpecs: { id: string; deps: string[] }[]): Fixture {
     settings: ctx.settings,
     notifier,
     registry: ctx.registry,
+    reports,
     workspacesDir: ctx.tmpDir,
   });
   return { ctx, orchestrator, projectId, repo, artifacts: ws.artifacts };

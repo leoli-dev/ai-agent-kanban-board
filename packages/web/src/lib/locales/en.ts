@@ -120,6 +120,7 @@ export const en: Record<string, string> = {
   'project.rejectPlaceholder': 'What should change in the plan?',
   'project.sendBack': 'Send back to planner',
   'project.costToDate': 'Cost to date: {cost}',
+  'project.report': 'Completion report',
   'project.pause': 'Pause',
   'project.resume': 'Resume',
   'project.deleteConfirm': 'Delete project "{name}"? Running agents are killed; the workspace (plan, logs, uploads) is removed. Your git repo and its branches are untouched.',

@@ -120,6 +120,7 @@ export const zh: Record<string, string> = {
   'project.rejectPlaceholder': '计划需要改什么？',
   'project.sendBack': '退回给规划师',
   'project.costToDate': '累计花费：{cost}',
+  'project.report': '完成报告',
   'project.pause': '暂停',
   'project.resume': '继续',
   'project.deleteConfirm': '删除项目 "{name}"？运行中的智能体会被终止，工作区（计划、日志、上传文件）将被删除。你的 git 仓库和分支不受影响。',

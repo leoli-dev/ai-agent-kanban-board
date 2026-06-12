@@ -38,6 +38,13 @@ export default function ProjectDetail() {
     queryKey: ['projectRuns', projectId],
     queryFn: () => api.get<AgentRun[]>(`/api/projects/${projectId}/runs`),
   });
+  const { data: report } = useQuery({
+    queryKey: ['report', projectId],
+    queryFn: () => api.get<{ md: string | null }>(`/api/projects/${projectId}/report`),
+    enabled: !!project && project.status === 'done',
+    // The how-to-run section is agent-written; poll until the placeholder is gone.
+    refetchInterval: (q) => (q.state.data?.md?.includes('⏳') ? 15_000 : false),
+  });
 
   useWsTopics(['global', `board:${projectId}`], (msg) => {
     if (msg.type === 'project.updated' || msg.type === 'plan.ready') {
@@ -114,6 +121,17 @@ export default function ProjectDetail() {
           <span>{t('project.costToDate', { cost: formatCost(totalCost) })}</span>
         </div>
       </div>
+
+      {project.status === 'done' && report?.md && (
+        <section className="card rise-in border-teal-500/30 p-4">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-teal-300">
+            🎉 {t('project.report')}
+          </h2>
+          <div className="prose prose-sm prose-invert max-w-none prose-headings:tracking-tight">
+            <ReactMarkdown>{report.md}</ReactMarkdown>
+          </div>
+        </section>
+      )}
 
       <section className="card p-4">
         <h2 className="mb-2 text-sm font-semibold text-ink-300">{t('project.idea')}</h2>

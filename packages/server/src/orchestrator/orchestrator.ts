@@ -12,6 +12,7 @@ import { getTask, listProjectTasks, updateTask } from '../db/task-store.js';
 import type { SettingsStore } from '../db/settings-store.js';
 import type { AgentRunner } from '../runner/agent-runner.js';
 import type { Notifier } from '../notify/notifier.js';
+import type { ReportService } from '../reports/report-service.js';
 import type { WsHub } from '../ws/hub.js';
 import {
   commitAll,
@@ -45,6 +46,7 @@ interface OrchestratorDeps {
   settings: SettingsStore;
   notifier: Notifier;
   registry: ProviderRegistry;
+  reports: ReportService;
   workspacesDir: string;
 }
 
@@ -634,10 +636,16 @@ Begin.`;
     );
     this.deps.hub.publish('global', { type: 'project.updated', project: updated });
     this.deps.hub.publish(`board:${project.id}`, { type: 'project.updated', project: updated });
+    // Build the final report (agent enrichment runs in the background).
+    try {
+      this.deps.reports.ensure(updated);
+    } catch {
+      /* report regenerates on first view */
+    }
     void this.deps.notifier.notify(
       'project_done',
-      `Project complete: ${project.name}`,
-      `All tasks are done. Review the result on branch ${project.gitBranch} of ${project.targetRepoPath}.`,
+      `🎉 项目完成: ${project.name.slice(0, 60)}`,
+      `成果在 ${project.targetRepoPath} 的 ${project.gitBranch} 分支。打开项目页查看完成报告(做了什么/如何运行)。`,
       project.id,
     );
   }

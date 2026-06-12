@@ -90,6 +90,16 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     return project;
   });
 
+  /** Final report for completed projects (deterministic part is instant;
+   * the how-to-run section is agent-written and fills in shortly after). */
+  app.get('/api/projects/:id/report', async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const row = ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get();
+    if (!row) return reply.code(404).send({ error: 'project not found' });
+    if (row.status !== 'done') return { md: null };
+    return { md: ctx.reports.ensure(toProject(row)) };
+  });
+
   app.get('/api/projects/:id', async (req, reply) => {
     const id = (req.params as { id: string }).id;
     const row = ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get();

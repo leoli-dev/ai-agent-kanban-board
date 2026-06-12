@@ -15,6 +15,7 @@ import { PlannerService } from './agents/planner.js';
 import { Notifier } from './notify/notifier.js';
 import { Orchestrator } from './orchestrator/orchestrator.js';
 import { UsageService } from './usage/usage-service.js';
+import { ReportService } from './reports/report-service.js';
 import type { AppContext } from './context.js';
 import { registerRoutes } from './routes/index.js';
 
@@ -32,6 +33,7 @@ async function main(): Promise<void> {
   runner.recoverOrphans();
   const planner = new PlannerService({ db, hub, runner, settings, workspacesDir: WORKSPACES_DIR });
   const notifier = new Notifier(db, hub, settings);
+  const reports = new ReportService({ db, runStore, registry, runner, workspacesDir: WORKSPACES_DIR });
   const orchestrator = new Orchestrator({
     db,
     hub,
@@ -39,6 +41,7 @@ async function main(): Promise<void> {
     settings,
     notifier,
     registry,
+    reports,
     workspacesDir: WORKSPACES_DIR,
   });
   runner.on('provider_down', (info: { profile: { name: string }; reason: string; permanent: boolean }) => {
@@ -64,6 +67,7 @@ async function main(): Promise<void> {
     notifier,
     orchestrator,
     usage: new UsageService(secrets, runStore),
+    reports,
     dataDir: DATA_DIR,
     workspacesDir: WORKSPACES_DIR,
   };
