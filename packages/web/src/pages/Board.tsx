@@ -9,7 +9,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
-import { KANBAN_COLUMNS, type Project, type Task, type TaskStatus } from '@akb/shared';
+import { KANBAN_COLUMNS, type Project, type ProviderProfile, type Task, type TaskStatus } from '@akb/shared';
 import { api } from '../lib/api';
 import { useWsTopics } from '../lib/ws';
 import { useT } from '../lib/i18n';
@@ -21,11 +21,45 @@ export default function Board() {
   const t = useT();
   const { projectId } = useParams();
   const queryClient = useQueryClient();
-  const [liveTaskIds, setLiveTaskIds] = useState<Set<string>>(new Set());
+  // taskId -> model label of the agent currently running on it
+  const [liveRuns, setLiveRuns] = useState<Map<string, string>>(new Map());
 
   const { data: projects = [] } = useQuery({
     queryKey: ['projects'],
     queryFn: () => api.get<Project[]>('/api/projects'),
+  });
+  const { data: providers = [] } = useQuery({
+    queryKey: ['providers'],
+    queryFn: () => api.get<ProviderProfile[]>('/api/providers'),
+  });
+  const providerLabel = useMemo(() => {
+    const byId = new Map(providers.map((p) => [p.id, p]));
+    return (id: string) => {
+      const p = byId.get(id);
+      return p ? `${p.name}${p.modelLabel ? ` · ${p.modelLabel}` : ''}` : '';
+    };
+  }, [providers]);
+
+  // Seed live indicators on page load (WS events only cover changes after).
+  useQuery({
+    queryKey: ['activity-live-seed'],
+    enabled: providers.length > 0,
+    staleTime: Infinity,
+    queryFn: async () => {
+      const data = await api.get<{
+        runs: { taskId: string | null; status: string; providerProfileId: string }[];
+      }>('/api/activity?limit=50');
+      setLiveRuns((prev) => {
+        const next = new Map(prev);
+        for (const r of data.runs) {
+          if (r.status === 'running' && r.taskId) {
+            next.set(r.taskId, providerLabel(r.providerProfileId));
+          }
+        }
+        return next;
+      });
+      return data;
+    },
   });
 
   const tasksKey = projectId ? ['tasks', projectId] : ['tasks', 'all'];
@@ -51,10 +85,11 @@ export default function Board() {
         old ? old.filter((x) => x.id !== msg.taskId) : old,
       );
     } else if (msg.type === 'run.started' && msg.run.taskId) {
-      setLiveTaskIds((s) => new Set(s).add(msg.run.taskId!));
+      const taskId = msg.run.taskId;
+      setLiveRuns((s) => new Map(s).set(taskId, providerLabel(msg.run.providerProfileId)));
     } else if (msg.type === 'run.updated' && msg.run.taskId && msg.run.status !== 'running') {
-      setLiveTaskIds((s) => {
-        const next = new Set(s);
+      setLiveRuns((s) => {
+        const next = new Map(s);
         next.delete(msg.run.taskId!);
         return next;
       });
@@ -128,7 +163,7 @@ export default function Board() {
                 label={t(`task.${col.status}`)}
                 tasks={visibleTasks.filter((x) => x.status === col.status)}
                 projectNames={projectNames}
-                liveTaskIds={liveTaskIds}
+                liveRuns={liveRuns}
               />
             ))}
           </div>

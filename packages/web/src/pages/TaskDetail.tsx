@@ -95,7 +95,16 @@ export default function TaskDetail() {
           {activeRun && (
             <span className="flex items-center gap-1.5 text-xs text-teal-300">
               <span className="h-2 w-2 animate-pulse rounded-full bg-teal-400" />
-              {t('task.agentRunning')}
+              {t(`role.${activeRun.role}`)} · {t('task.agentRunning')}
+              <span className="rounded-md bg-teal-500/15 px-2 py-0.5 font-mono text-[11px] text-teal-200">
+                {providerById.get(activeRun.providerProfileId)?.name ?? '…'}
+                {providerById.get(activeRun.providerProfileId)?.modelLabel && (
+                  <span className="text-teal-400/70">
+                    {' '}
+                    · {providerById.get(activeRun.providerProfileId)!.modelLabel}
+                  </span>
+                )}
+              </span>
             </span>
           )}
         </div>
@@ -181,8 +190,15 @@ export default function TaskDetail() {
       />
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold text-ink-300">
+        <h2 className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold text-ink-300">
           {shownRun ? t('task.logRun', { id: shownRun.id.slice(0, 6) }) : t('task.log')}
+          {shownRun && (
+            <span className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-[10px] font-normal text-ink-400">
+              {providerById.get(shownRun.providerProfileId)?.name}
+              {providerById.get(shownRun.providerProfileId)?.modelLabel &&
+                ` · ${providerById.get(shownRun.providerProfileId)!.modelLabel}`}
+            </span>
+          )}
         </h2>
         {shownRun ? (
           <LogStream runId={shownRun.id} active={shownRun.status === 'running'} />

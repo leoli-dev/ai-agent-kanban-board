@@ -6,11 +6,12 @@ import { useT } from '../lib/i18n';
 export function TaskCard({
   task,
   projectName,
-  live,
+  liveModel,
 }: {
   task: Task;
   projectName?: string;
-  live?: boolean;
+  /** Defined when an agent is running; the label of the model doing it. */
+  liveModel?: string;
 }) {
   const t = useT();
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -40,10 +41,13 @@ export function TaskCard({
         >
           {task.title}
         </Link>
-        {live && (
+        {liveModel !== undefined && (
           <span className="mt-1 h-2 w-2 shrink-0 animate-pulse rounded-full bg-teal-400" />
         )}
       </div>
+      {liveModel && (
+        <p className="mt-1.5 truncate font-mono text-[10px] text-teal-300/90">▸ {liveModel}</p>
+      )}
       {(projectName || task.retryCount > 0 || task.bounceCount > 0 || task.blockedReason) && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {projectName && (

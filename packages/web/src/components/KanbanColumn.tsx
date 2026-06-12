@@ -8,13 +8,13 @@ export function KanbanColumn({
   label,
   tasks,
   projectNames,
-  liveTaskIds,
+  liveRuns,
 }: {
   status: TaskStatus;
   label: string;
   tasks: Task[];
   projectNames: Map<string, string>;
-  liveTaskIds: Set<string>;
+  liveRuns: Map<string, string>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
@@ -38,7 +38,7 @@ export function KanbanColumn({
             <TaskCard
               task={task}
               projectName={projectNames.get(task.projectId)}
-              live={liveTaskIds.has(task.id)}
+              liveModel={liveRuns.has(task.id) ? (liveRuns.get(task.id) ?? '') : undefined}
             />
           </div>
         ))}
