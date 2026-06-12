@@ -61,6 +61,10 @@ export class Orchestrator {
   /** Per-project promise chain: serializes worktree setup + merges, which
    * would otherwise race on the repo's index/worktree locks. */
   private gitLocks = new Map<string, Promise<unknown>>();
+  /** Last auto-resume attempt per parked task, so a failing stage agent
+   * doesn't get relaunched on every tick. */
+  private stageResumeAt = new Map<string, number>();
+  private static readonly STAGE_RESUME_COOLDOWN_MS = 10 * 60_000;
 
   constructor(private deps: OrchestratorDeps) {}
 
@@ -180,6 +184,32 @@ export class Orchestrator {
         if (this.activeTasks.size >= capacityTotal) return;
         this.activeTasks.add(task.id);
         void this.runTaskPipeline(project, task).finally(() => {
+          this.activeTasks.delete(task.id);
+          this.nudge();
+        });
+      }
+
+      // Tasks parked in review/test (pipeline interrupted by a restart, or
+      // the stage role was configured after the coder finished): resume the
+      // remaining stages.
+      const settings = this.deps.settings.get();
+      for (const task of tasks) {
+        if (this.activeTasks.size >= capacityTotal) return;
+        if (this.activeTasks.has(task.id)) continue;
+        const wantsReview =
+          task.status === 'to_review' &&
+          settings.autoAdvanceReview &&
+          !!this.deps.registry.pickForRole('reviewer');
+        const wantsTest =
+          task.status === 'to_test' &&
+          settings.autoAdvanceTest &&
+          !!this.deps.registry.pickForRole('tester');
+        if (!wantsReview && !wantsTest) continue;
+        const lastAttempt = this.stageResumeAt.get(task.id) ?? 0;
+        if (Date.now() - lastAttempt < Orchestrator.STAGE_RESUME_COOLDOWN_MS) continue;
+        this.stageResumeAt.set(task.id, Date.now());
+        this.activeTasks.add(task.id);
+        void this.resumeStages(project, task, wantsReview ? 'review' : 'test').finally(() => {
           this.activeTasks.delete(task.id);
           this.nudge();
         });
@@ -334,13 +364,28 @@ export class Orchestrator {
     }
   }
 
+  /** Resume the remaining stages of a parked task (its worktree is reused,
+   * or recreated from the project branch for pre-worktree tasks). */
+  private async resumeStages(project: Project, task: Task, from: 'review' | 'test'): Promise<void> {
+    const ws = workspacePaths(this.deps.workspacesDir, project.id);
+    const prep = await this.prepareTaskWorktree(project, task);
+    if ('error' in prep) return; // stay parked; surfaced on the next manual look
+    await this.runReviewAndTestStages(project, task, ws.artifacts, prep.cwd, from);
+  }
+
   private async runReviewAndTestStages(
     project: Project,
     task: Task,
     artifactsDir: string,
     cwd: string,
+    from: 'review' | 'test' = 'review',
   ): Promise<void> {
     const settings = this.deps.settings.get();
+
+    if (from === 'test') {
+      await this.runTestStage(project, task, artifactsDir, cwd, settings);
+      return;
+    }
 
     // Review stage (skipped -> stays in to_review for manual handling).
     if (!settings.autoAdvanceReview || !this.deps.registry.pickForRole('reviewer')) return;
@@ -363,7 +408,16 @@ export class Orchestrator {
       return;
     }
     updateTask(this.deps.db, this.deps.hub, task.id, { status: 'to_test' });
+    await this.runTestStage(project, task, artifactsDir, cwd, settings);
+  }
 
+  private async runTestStage(
+    project: Project,
+    task: Task,
+    artifactsDir: string,
+    cwd: string,
+    settings: ReturnType<SettingsStore['get']>,
+  ): Promise<void> {
     // Test stage (skipped -> stays in to_test for manual handling).
     if (!settings.autoAdvanceTest || !this.deps.registry.pickForRole('tester')) return;
 

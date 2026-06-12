@@ -271,6 +271,43 @@ describe('Orchestrator (money test)', () => {
     ).toContain('missing error handling');
   }, 30_000);
 
+  it('resumes a task parked in to_review (interrupted pipeline / late role config)', async () => {
+    const f = makeFixture([{ id: 't1', deps: [] }]);
+    // Simulate a pipeline interrupted after the coder finished.
+    updateTask(f.ctx.db, f.ctx.hub, 't1', { status: 'to_review' });
+    addMockProfile(
+      f.ctx,
+      'reviewer',
+      scripts.success('REVIEW_DONE', {
+        writeFiles: [
+          {
+            path: path.join(f.artifacts, 'review-t1.json'),
+            content: JSON.stringify({ verdict: 'approve', notes: 'ok' }),
+          },
+        ],
+      }),
+    );
+    addMockProfile(
+      f.ctx,
+      'tester',
+      scripts.success('TEST_DONE', {
+        writeFiles: [
+          {
+            path: path.join(f.artifacts, 'test-report-t1.json'),
+            content: JSON.stringify({ pass: true, summary: 'works' }),
+          },
+        ],
+      }),
+    );
+
+    f.orchestrator.start();
+    await waitFor(() => taskStatus(f.ctx, 't1') === 'done');
+    f.orchestrator.stop();
+
+    const roles = f.ctx.runStore.listByTask('t1').map((r) => r.role).sort();
+    expect(roles).toEqual(['reviewer', 'tester']);
+  }, 30_000);
+
   it('fails a task after retries are exhausted and notifies', async () => {
     const f = makeFixture([{ id: 't1', deps: [] }]);
     f.ctx.settings.update({ maxRetries: 1 });
