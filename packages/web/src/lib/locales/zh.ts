@@ -52,7 +52,7 @@ export const zh: Record<string, string> = {
   'role.reviewer.hint': '阅读改动并批准或要求修改。',
   'role.tester.hint': '运行构建/测试并报告通过与否。',
   'role.debugger.hint': '从日志诊断卡住的智能体，建议用强模型。',
-  'role.orchestrator.hint': '仅用于供应商连通性测试；调度本身是纯代码，不消耗 token。',
+  'role.orchestrator.hint': '仅用于模型连通性测试；调度本身是纯代码，不消耗 token。',
 
   // board
   'board.title': '看板',
@@ -135,13 +135,13 @@ export const zh: Record<string, string> = {
   'settings.language': '语言',
   'settings.language.help': '界面语言。发给智能体的提示词始终为英文。',
 
-  'settings.providers': 'AI 供应商',
+  'settings.providers': '模型配置',
   'settings.providers.help':
-    '一个供应商 = 一种运行智能体的方式：引擎（干活的 CLI）+ 环境变量（连接哪个 API）。同一个 Claude Code 引擎可以指向 Anthropic、DeepSeek、MiniMax 或本地服务——只需把 ANTHROPIC_BASE_URL 指向兼容 Anthropic 协议的端点。',
-  'settings.providers.add': '添加供应商',
-  'settings.providers.empty': '还没有供应商。可添加 Claude、Codex、DeepSeek 或本地端点——建议从下方预设开始。',
-  'settings.provider.new': '新建供应商',
-  'settings.provider.edit': '编辑供应商',
+    '一个模型配置 = AI 供应商（Anthropic、OpenAI、Kimi、OpenRouter、本地服务…）+ 具体模型 + 运行参数，供智能体调用。同一家供应商可以配多个模型，同一个模型也可以走不同供应商。',
+  'settings.providers.add': '添加模型',
+  'settings.providers.empty': '还没有配置模型。可从 Claude、Codex、DeepSeek、Kimi、OpenRouter 或本地端点添加。',
+  'settings.provider.new': '新建模型配置',
+  'settings.provider.edit': '编辑模型配置',
   'settings.provider.preset': '从预设开始',
   'settings.provider.preset.custom': '空白（自定义）',
   'settings.provider.name': '名称',
@@ -157,12 +157,12 @@ export const zh: Record<string, string> = {
   'settings.provider.addVar': '添加变量',
   'settings.provider.disabled': '已停用',
   'settings.provider.cooldown': '冷却中，至 {time}',
-  'settings.provider.deleteConfirm': '删除供应商 "{name}"？',
-  'settings.provider.testHint': '通过该供应商真实运行一次单条提示（"回复 OK"），验证密钥和连通性。',
+  'settings.provider.deleteConfirm': '删除模型配置 "{name}"？',
+  'settings.provider.testHint': '通过该模型真实运行一次单条提示（"回复 OK"），验证密钥和连通性。',
 
   // provider builder
-  'builder.pick': '选择供应商',
-  'builder.pick.help': '选一个，对应的设置项会自动出现，无需手写环境变量。Custom 进入原始编辑器。',
+  'builder.pick': '选择 AI 供应商',
+  'builder.pick.help': '先选供应商，再配置模型——对应的设置项会自动出现，无需手写环境变量。Custom 进入原始编辑器。',
   'builder.changeType': '换一个供应商',
   'builder.auth': '认证方式',
   'builder.auth.help': 'CLI 登录使用终端里已登录的账号（订阅计费）；API 密钥则按开发者账号计费。',
@@ -198,7 +198,7 @@ export const zh: Record<string, string> = {
   'builder.sandbox': '沙箱',
   'builder.sandbox.help': 'workspace-write：只能改仓库内文件（推荐）。read-only：不能改文件。danger-full-access：完全不设防。',
   'builder.preview': '预览生成的配置',
-  'builder.create': '创建供应商',
+  'builder.create': '添加模型',
 
   // usage
   'usage.button': '用量',
@@ -218,11 +218,11 @@ export const zh: Record<string, string> = {
   'usage.unsupported.codex': 'Codex 只在运行事件流里报告限额——先跑一个 codex 任务再来看。',
   'usage.unsupported.noKey': '请先填入 API 密钥——用量需要用它来读取。',
 
-  'settings.roles': '角色 → 供应商优先级',
+  'settings.roles': '角色 → 模型优先级',
   'settings.roles.help':
-    '每个角色按从上到下的顺序尝试供应商。额度耗尽或被限流 → 该供应商冷却 15 分钟，下一个供应商接管任务。鉴权失败 → 停用，需手动重新启用。顺序即偏好：最好/最便宜的放最前，本地模型放最后兜底。',
-  'settings.roles.none': '未分配供应商',
-  'settings.roles.add': '添加供应商…',
+    '每个角色按从上到下的顺序尝试模型。额度耗尽或被限流 → 该模型冷却 15 分钟，下一个接管任务。鉴权失败 → 停用，需手动重新启用。顺序即偏好：最好/最便宜的放最前，本地模型放最后兜底。',
+  'settings.roles.none': '未分配模型',
+  'settings.roles.add': '添加模型…',
 
   'settings.secrets': '密钥',
   'settings.secrets.help':

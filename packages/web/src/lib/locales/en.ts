@@ -52,7 +52,7 @@ export const en: Record<string, string> = {
   'role.reviewer.hint': 'Reads the diff and approves or requests changes.',
   'role.tester.hint': 'Runs builds/tests and reports pass or fail.',
   'role.debugger.hint': 'Diagnoses stuck agents from their logs. A strong model helps.',
-  'role.orchestrator.hint': 'Reserved for provider smoke tests; scheduling itself is plain code, no tokens needed.',
+  'role.orchestrator.hint': 'Reserved for model connectivity tests; scheduling itself is plain code, no tokens needed.',
 
   // board
   'board.title': 'Board',
@@ -135,13 +135,13 @@ export const en: Record<string, string> = {
   'settings.language': 'Language',
   'settings.language.help': 'Interface language. Agents always receive prompts in English.',
 
-  'settings.providers': 'AI providers',
+  'settings.providers': 'Models',
   'settings.providers.help':
-    'A provider is one way to run an agent: an engine (the CLI that does the work) plus environment variables (which API it talks to). The same Claude Code engine can target Anthropic, DeepSeek, MiniMax, or a local server — just point ANTHROPIC_BASE_URL at an Anthropic-compatible endpoint.',
-  'settings.providers.add': 'Add provider',
-  'settings.providers.empty': 'No providers yet. Add Claude, Codex, DeepSeek, or a local endpoint — start from a preset below.',
-  'settings.provider.new': 'New provider',
-  'settings.provider.edit': 'Edit provider',
+    'A model setup = an AI provider (Anthropic, OpenAI, Kimi, OpenRouter, a local server…) + a specific model + runtime settings, ready for agents to use. You can set up several models from the same provider, or the same model through different providers.',
+  'settings.providers.add': 'Add model',
+  'settings.providers.empty': 'No models set up yet. Add one from Claude, Codex, DeepSeek, Kimi, OpenRouter, or a local endpoint.',
+  'settings.provider.new': 'New model setup',
+  'settings.provider.edit': 'Edit model setup',
   'settings.provider.preset': 'Start from a preset',
   'settings.provider.preset.custom': 'Blank (custom)',
   'settings.provider.name': 'Name',
@@ -157,12 +157,12 @@ export const en: Record<string, string> = {
   'settings.provider.addVar': 'add variable',
   'settings.provider.disabled': 'disabled',
   'settings.provider.cooldown': 'cooling down until {time}',
-  'settings.provider.deleteConfirm': 'Delete provider "{name}"?',
-  'settings.provider.testHint': 'Runs a real one-shot prompt ("reply OK") through this provider to verify keys and connectivity.',
+  'settings.provider.deleteConfirm': 'Delete model setup "{name}"?',
+  'settings.provider.testHint': 'Runs a real one-shot prompt ("reply OK") through this model to verify keys and connectivity.',
 
   // provider builder
-  'builder.pick': 'Which provider?',
-  'builder.pick.help': 'Pick one — the right settings appear, no env vars to type. Custom gives you the raw editor.',
+  'builder.pick': 'Which AI provider?',
+  'builder.pick.help': 'Pick the provider, then configure the model — the right settings appear, no env vars to type. Custom gives you the raw editor.',
   'builder.changeType': 'change provider',
   'builder.auth': 'Authentication',
   'builder.auth.help': 'CLI login uses the account you are already signed into in the terminal (subscription). API key bills your developer account instead.',
@@ -198,7 +198,7 @@ export const en: Record<string, string> = {
   'builder.sandbox': 'Sandbox',
   'builder.sandbox.help': 'workspace-write: edit files in the repo only (recommended). read-only: no edits. danger-full-access: no sandbox at all.',
   'builder.preview': 'Preview generated configuration',
-  'builder.create': 'Create provider',
+  'builder.create': 'Add model',
 
   // usage
   'usage.button': 'Usage',
@@ -218,11 +218,11 @@ export const en: Record<string, string> = {
   'usage.unsupported.codex': 'Codex only reports limits inside its event stream — run one codex task first, then check again.',
   'usage.unsupported.noKey': 'Add the API key first — usage is read with it.',
 
-  'settings.roles': 'Role → provider priority',
+  'settings.roles': 'Role → model priority',
   'settings.roles.help':
-    'Each agent role tries its providers top to bottom. Out of quota or rate-limited → the provider cools down for 15 minutes and the next one takes over mid-task. Auth failure → it is disabled until you re-enable it. Order = preference: put your best/cheapest first, a local model last as the safety net.',
-  'settings.roles.none': 'no providers assigned',
-  'settings.roles.add': 'add provider…',
+    'Each agent role tries its models top to bottom. Out of quota or rate-limited → that model cools down for 15 minutes and the next one takes over mid-task. Auth failure → it is disabled until you re-enable it. Order = preference: put your best/cheapest first, a local model last as the safety net.',
+  'settings.roles.none': 'no models assigned',
+  'settings.roles.add': 'add model…',
 
   'settings.secrets': 'Secrets',
   'settings.secrets.help':
