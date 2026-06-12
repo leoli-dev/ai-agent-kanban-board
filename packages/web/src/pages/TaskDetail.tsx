@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import ReactMarkdown from 'react-markdown';
 import type { AgentRun, Project, ProviderProfile, Task } from '@akb/shared';
 import { api } from '../lib/api';
 import { useWsTopics } from '../lib/ws';
@@ -35,6 +36,16 @@ export default function TaskDetail() {
     queryFn: () => api.get<ProviderProfile[]>('/api/providers'),
   });
   const providerById = new Map(providers.map((p) => [p.id, p]));
+  const { data: artifacts } = useQuery({
+    queryKey: ['taskArtifacts', taskId],
+    queryFn: () =>
+      api.get<{
+        review: { verdict: string; notes?: string } | null;
+        testReport: { pass: boolean; summary?: string } | null;
+        feedback: string | null;
+        diagnoses: string[];
+      }>(`/api/tasks/${taskId}/artifacts`),
+  });
 
   useWsTopics(task ? [`board:${task.projectId}`] : [], (msg) => {
     if (msg.type === 'task.updated' && msg.task.id === taskId) {
@@ -160,6 +171,15 @@ export default function TaskDetail() {
         </button>
       </div>
 
+      <StageSummaries
+        runs={runs}
+        artifacts={artifacts}
+        providerName={(id) => {
+          const p = providerById.get(id);
+          return p ? `${p.name}${p.modelLabel ? ` · ${p.modelLabel}` : ''}` : id.slice(0, 6);
+        }}
+      />
+
       <section>
         <h2 className="mb-2 text-sm font-semibold text-ink-300">
           {shownRun ? t('task.logRun', { id: shownRun.id.slice(0, 6) }) : t('task.log')}
@@ -209,6 +229,86 @@ export default function TaskDetail() {
         </section>
       )}
     </div>
+  );
+}
+
+/** What each stage produced, attributed to the model that did it. */
+function StageSummaries({
+  runs,
+  artifacts,
+  providerName,
+}: {
+  runs: AgentRun[];
+  artifacts?: {
+    review: { verdict: string; notes?: string } | null;
+    testReport: { pass: boolean; summary?: string } | null;
+    feedback: string | null;
+    diagnoses: string[];
+  };
+  providerName: (id: string) => string;
+}) {
+  const t = useT();
+  const latest = (role: string) =>
+    runs.find((r) => r.role === role && r.status === 'succeeded');
+  const coder = latest('coder');
+  const reviewer = latest('reviewer');
+  const tester = latest('tester');
+  const debuggerRun = latest('debugger');
+
+  const blocks: { title: string; model: string; body: string; tone?: 'ok' | 'bad' }[] = [];
+  if (coder?.resultText) {
+    blocks.push({ title: t('role.coder'), model: providerName(coder.providerProfileId), body: coder.resultText });
+  }
+  if (artifacts?.review && reviewer) {
+    blocks.push({
+      title: t('role.reviewer'),
+      model: providerName(reviewer.providerProfileId),
+      body: `**${artifacts.review.verdict}**${artifacts.review.notes ? ` — ${artifacts.review.notes}` : ''}`,
+      tone: artifacts.review.verdict === 'approve' ? 'ok' : 'bad',
+    });
+  }
+  if (artifacts?.testReport && tester) {
+    blocks.push({
+      title: t('role.tester'),
+      model: providerName(tester.providerProfileId),
+      body: `**${artifacts.testReport.pass ? t('task.testPass') : t('task.testFail')}**${artifacts.testReport.summary ? ` — ${artifacts.testReport.summary}` : ''}`,
+      tone: artifacts.testReport.pass ? 'ok' : 'bad',
+    });
+  }
+  if (artifacts?.diagnoses.length && debuggerRun) {
+    blocks.push({
+      title: t('role.debugger'),
+      model: providerName(debuggerRun.providerProfileId),
+      body: artifacts.diagnoses[artifacts.diagnoses.length - 1]!,
+    });
+  }
+  if (blocks.length === 0) return null;
+
+  return (
+    <section className="card p-4">
+      <h2 className="mb-3 text-sm font-semibold text-ink-300">{t('task.summary')}</h2>
+      <div className="space-y-3">
+        {blocks.map((b, i) => (
+          <div key={i} className="rounded-lg bg-ink-850 p-3">
+            <p className="mb-1.5 flex flex-wrap items-center gap-2 text-xs">
+              <span
+                className={`font-semibold ${
+                  b.tone === 'ok' ? 'text-teal-300' : b.tone === 'bad' ? 'text-red-300' : 'text-ink-200'
+                }`}
+              >
+                {b.title}
+              </span>
+              <span className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-[10px] text-ink-400">
+                {b.model}
+              </span>
+            </p>
+            <div className="prose prose-sm prose-invert max-w-none text-[13px]">
+              <ReactMarkdown>{b.body.slice(0, 3000)}</ReactMarkdown>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

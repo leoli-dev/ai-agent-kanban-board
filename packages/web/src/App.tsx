@@ -25,7 +25,7 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-ink-800 bg-ink-900/80 px-4 py-2 backdrop-blur">
+      <header className="relative z-40 flex items-center justify-between border-b border-ink-800 bg-ink-900/80 px-4 py-2 backdrop-blur">
         <NavLink to="/" className="flex items-center gap-2">
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-400 text-ink-950">
             <IconBolt width={15} height={15} />

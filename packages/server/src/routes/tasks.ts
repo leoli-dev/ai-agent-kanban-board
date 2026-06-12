@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
@@ -37,6 +39,55 @@ export async function taskRoutes(app: FastifyInstance, ctx: AppContext): Promise
     const updated = updateTask(ctx.db, ctx.hub, id, { status: body.status, blockedReason: null });
     ctx.orchestrator.nudge();
     return updated;
+  });
+
+  /** Stage artifacts for the summary view: review verdict, test report,
+   * bounce feedback, debugger diagnoses. */
+  app.get('/api/tasks/:id/artifacts', async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const task = getTask(ctx.db, id);
+    if (!task) return reply.code(404).send({ error: 'task not found' });
+    const project = ctx.db
+      .select()
+      .from(schema.projects)
+      .where(eq(schema.projects.id, task.projectId))
+      .get();
+    if (!project) return reply.code(404).send({ error: 'project not found' });
+    const artifactsDir = path.join(project.workspacePath, 'artifacts');
+
+    const readJson = (file: string): unknown => {
+      try {
+        return JSON.parse(fs.readFileSync(path.join(artifactsDir, file), 'utf8'));
+      } catch {
+        return null;
+      }
+    };
+    const readText = (file: string): string | null => {
+      try {
+        return fs.readFileSync(path.join(artifactsDir, file), 'utf8');
+      } catch {
+        return null;
+      }
+    };
+    let diagnoses: string[] = [];
+    try {
+      diagnoses = fs
+        .readdirSync(artifactsDir)
+        .filter((f) => f.startsWith(`diagnosis-${id}-`))
+        .sort()
+        .slice(-2)
+        .map((f) => readText(f) ?? '')
+        .filter(Boolean);
+    } catch {
+      /* no artifacts dir */
+    }
+
+    return {
+      review: readJson(`review-${id}.json`),
+      testReport: readJson(`test-report-${id}.json`),
+      feedback: readText(`feedback-${id}.md`),
+      diagnoses,
+    };
   });
 
   /** Delete a task: kill its active agent first, then remove rows + deps. */

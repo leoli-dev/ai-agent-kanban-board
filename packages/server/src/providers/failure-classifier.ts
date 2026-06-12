@@ -1,8 +1,28 @@
 import type { FailureClass } from '@akb/shared';
 import type { NormalizedResult } from '../engines/types.js';
 
-const QUOTA_RE =
-  /credit balance|insufficient (credits|quota|funds)|exceeded.*quota|quota.*exceeded|rate.?limit|too many requests|\b429\b|\b529\b|overloaded/i;
+const QUOTA_RE = new RegExp(
+  [
+    // API-style: rate limits, credit balance, HTTP codes
+    'credit balance',
+    'insufficient (credits|quota|funds)',
+    'exceeded.*quota',
+    'quota.*exceeded',
+    'rate.?limit',
+    'too many requests',
+    '\\b429\\b',
+    '\\b529\\b',
+    'overloaded',
+    // Subscription-style (Claude/Codex CLI login): "You've hit your session
+    // limit · resets 4pm", "usage limit reached", "Weekly limit reached"…
+    "you'?ve (hit|reached) your",
+    '(session|usage|weekly|5-hour|five-hour) limit',
+    'limit (reached|will reset)',
+    'limit\\s*·\\s*resets',
+    'resets at \\d',
+  ].join('|'),
+  'i',
+);
 const AUTH_RE = /\b401\b|\b403\b|invalid.*(api.?key|token)|authentication|unauthorized|forbidden/i;
 
 /**
