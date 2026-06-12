@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
-import type { PlannerMessage, Project, Question } from '@akb/shared';
+import type { AgentRun, PlannerMessage, Project, Question } from '@akb/shared';
 import { api } from '../lib/api';
 import { useWsTopics } from '../lib/ws';
 import { useT } from '../lib/i18n';
 import { projectStatusStyle } from '../lib/format';
 import { IconArrowLeft } from '../components/icons';
+import { LogStream } from '../components/LogStream';
 
 interface PlannerState {
   session: { id: string; status: string; qaRound: number } | null;
@@ -29,18 +30,27 @@ export default function PlannerChat() {
     queryFn: () => api.get<PlannerState>(`/api/projects/${projectId}/planner`),
     refetchInterval: 5000,
   });
+  const { data: runs = [] } = useQuery({
+    queryKey: ['projectRuns', projectId],
+    queryFn: () => api.get<AgentRun[]>(`/api/projects/${projectId}/runs`),
+    refetchInterval: 5000,
+  });
 
   useWsTopics(['global', `board:${projectId}`], (msg) => {
     if (
       msg.type === 'question.pending' ||
       msg.type === 'plan.ready' ||
       msg.type === 'project.updated' ||
-      msg.type === 'run.updated'
+      msg.type === 'run.updated' ||
+      msg.type === 'run.started'
     ) {
       queryClient.invalidateQueries({ queryKey: ['planner', projectId] });
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projectRuns', projectId] });
     }
   });
+
+  const plannerRun = runs.find((r) => r.role === 'planner');
 
   const sendAnswers = useMutation({
     mutationFn: (payload: { questionId: string; answer: string }[]) =>
@@ -84,9 +94,14 @@ export default function PlannerChat() {
       </div>
 
       {project?.status === 'planning' && (
-        <div className="flex items-center gap-2.5 rounded-xl border border-accent-500/30 bg-accent-500/10 p-3 text-sm text-accent-300">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-accent-400" />
-          {t('planner.working')}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2.5 rounded-xl border border-accent-500/30 bg-accent-500/10 p-3 text-sm text-accent-300">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-accent-400" />
+            {t('planner.working')}
+          </div>
+          {plannerRun && (
+            <LogStream runId={plannerRun.id} active={plannerRun.status === 'running'} />
+          )}
         </div>
       )}
 
