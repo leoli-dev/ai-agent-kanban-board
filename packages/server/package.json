@@ -20,12 +20,14 @@
     "nanoid": "^5.1.0",
     "nodemailer": "^7.0.0",
     "simple-git": "^3.27.0",
+    "ws": "^8.21.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^6.4.17",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
     "vitest": "^3.1.0"

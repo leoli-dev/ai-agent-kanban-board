@@ -3,10 +3,14 @@ import Fastify from 'fastify';
 import fastifyWebsocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
 import fastifyMultipart from '@fastify/multipart';
-import { DATA_DIR, DB_PATH, HOST, PORT, WEB_DIST, WORKSPACES_DIR } from './config.js';
+import { DATA_DIR, DB_PATH, HOST, PORT, SECRETS_PATH, WEB_DIST, WORKSPACES_DIR } from './config.js';
 import { openDb } from './db/index.js';
 import { SettingsStore } from './db/settings-store.js';
 import { WsHub } from './ws/hub.js';
+import { SecretStore } from './providers/secrets.js';
+import { ProviderRegistry } from './providers/registry.js';
+import { RunStore } from './runner/run-store.js';
+import { AgentRunner } from './runner/agent-runner.js';
 import type { AppContext } from './context.js';
 import { registerRoutes } from './routes/index.js';
 
@@ -16,11 +20,22 @@ async function main(): Promise<void> {
 
   const { db, sqlite } = openDb(DB_PATH);
   const hub = new WsHub();
+  const settings = new SettingsStore(db);
+  const secrets = new SecretStore(SECRETS_PATH);
+  const registry = new ProviderRegistry(db, secrets);
+  const runStore = new RunStore(db, hub);
+  const runner = new AgentRunner({ registry, runStore, settings, hub });
+  runner.recoverOrphans();
+
   const ctx: AppContext = {
     db,
     sqlite,
     hub,
-    settings: new SettingsStore(db),
+    settings,
+    secrets,
+    registry,
+    runStore,
+    runner,
     dataDir: DATA_DIR,
     workspacesDir: WORKSPACES_DIR,
   };

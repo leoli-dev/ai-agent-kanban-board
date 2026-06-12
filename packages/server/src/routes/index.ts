@@ -1,8 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../context.js';
+import { providerRoutes } from './providers.js';
+import { runRoutes } from './runs.js';
+import { settingsRoutes } from './settings.js';
+import { debugRoutes } from './debug.js';
 
-/** Route modules are registered here as phases land. */
 export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
-  void ctx;
-  void app;
+  await providerRoutes(app, ctx);
+  await runRoutes(app, ctx);
+  await settingsRoutes(app, ctx);
+  await debugRoutes(app, ctx);
 }
