@@ -73,7 +73,7 @@ export const en: Record<string, string> = {
   'new.idea': 'Your idea',
   'new.ideaPlaceholder': 'Describe what you want built. The planner agent will refine it and ask follow-up questions if anything is unclear.',
   'new.repo': 'Target repo path',
-  'new.repoHint': 'Local git repository the agents will work in (on a dedicated branch).',
+  'new.repoHint': 'Local folder the agents work in (on a dedicated branch). Created and git-initialized automatically if it doesn’t exist yet.',
   'new.name': 'Project name',
   'new.nameOptional': 'optional',
   'new.namePlaceholder': 'Derived from the prompt if empty',

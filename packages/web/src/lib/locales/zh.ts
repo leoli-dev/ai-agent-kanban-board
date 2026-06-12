@@ -73,7 +73,7 @@ export const zh: Record<string, string> = {
   'new.idea': '你的想法',
   'new.ideaPlaceholder': '描述你想做什么。规划智能体会完善它，如有不清楚的地方会向你提问。',
   'new.repo': '目标仓库路径',
-  'new.repoHint': '智能体工作的本地 git 仓库（在专用分支上）。',
+  'new.repoHint': '智能体工作的本地文件夹（在专用分支上）。不存在时会自动创建并初始化 git 仓库。',
   'new.name': '项目名称',
   'new.nameOptional': '可选',
   'new.namePlaceholder': '留空则从想法自动生成',

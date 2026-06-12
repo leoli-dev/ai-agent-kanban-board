@@ -68,7 +68,7 @@ export default function NewProject() {
           <input
             value={repoPath}
             onChange={(e) => setRepoPath(e.target.value)}
-            placeholder="/Users/leo/Code/my-project"
+            placeholder="~/Code/my-project"
             className="input-base font-mono"
           />
         </label>

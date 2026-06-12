@@ -9,7 +9,7 @@ import type { InputKind } from '@akb/shared';
 import { schema } from '../db/index.js';
 import { toPlanDocument, toProject, toProjectInput } from '../db/mappers.js';
 import type { AppContext } from '../context.js';
-import { isGitRepo } from '../workspace/git.js';
+import { initRepoWithBaseline } from '../workspace/git.js';
 import { scaffoldWorkspace, slugify, workspacePaths } from '../workspace/workspace.js';
 
 const CreateProjectBody = z.object({
@@ -41,15 +41,21 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     const body = CreateProjectBody.parse(req.body);
 
     const repoPath = path.resolve(body.targetRepoPath.replace(/^~/, process.env.HOME ?? '~'));
-    if (!fs.existsSync(repoPath) || !fs.statSync(repoPath).isDirectory()) {
-      return reply.code(400).send({ error: `target repo path does not exist: ${repoPath}` });
-    }
-    if (!isGitRepo(repoPath)) {
-      return reply.code(400).send({ error: `target path is not a git repository: ${repoPath}` });
+    if (fs.existsSync(repoPath) && !fs.statSync(repoPath).isDirectory()) {
+      return reply.code(400).send({ error: `target path is a file, not a directory: ${repoPath}` });
     }
 
     const id = nanoid(10);
     const name = body.name?.trim() || body.prompt.split(/\s+/).slice(0, 6).join(' ');
+
+    // New projects often start from nothing: create the folder and init git
+    // (with a baseline commit) instead of rejecting.
+    try {
+      fs.mkdirSync(repoPath, { recursive: true });
+      await initRepoWithBaseline(repoPath, name);
+    } catch (err) {
+      return reply.code(400).send({ error: `could not prepare git repository: ${String(err)}` });
+    }
     const paths = scaffoldWorkspace(ctx.workspacesDir, id);
 
     ctx.db
