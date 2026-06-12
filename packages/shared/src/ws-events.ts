@@ -10,6 +10,7 @@ export type WsClientMessage =
 export type WsServerMessage =
   | { type: 'pong' }
   | { type: 'task.updated'; task: Task }
+  | { type: 'task.deleted'; taskId: string; projectId: string }
   | { type: 'tasks.created'; projectId: string; tasks: Task[] }
   | { type: 'project.updated'; project: Project }
   | { type: 'run.started'; run: AgentRun }

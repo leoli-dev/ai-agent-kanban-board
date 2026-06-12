@@ -168,6 +168,14 @@ export class Orchestrator {
         return;
       }
 
+      // User-initiated kill (pause, delete, kill button): re-queue without
+      // burning the retry budget. The task stays in backlog until resumed.
+      if (outcome.finalRun?.status === 'killed') {
+        const still = getTask(this.deps.db, task.id);
+        if (still) updateTask(this.deps.db, this.deps.hub, task.id, { status: 'backlog' });
+        return;
+      }
+
       if (outcome.blocked) {
         updateTask(this.deps.db, this.deps.hub, task.id, {
           status: 'blocked',

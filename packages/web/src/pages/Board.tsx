@@ -46,6 +46,10 @@ export default function Board() {
       );
     } else if (msg.type === 'tasks.created') {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    } else if (msg.type === 'task.deleted') {
+      queryClient.setQueryData<Task[]>(tasksKey, (old) =>
+        old ? old.filter((x) => x.id !== msg.taskId) : old,
+      );
     } else if (msg.type === 'run.started' && msg.run.taskId) {
       setLiveTaskIds((s) => new Set(s).add(msg.run.taskId!));
     } else if (msg.type === 'run.updated' && msg.run.taskId && msg.run.status !== 'running') {

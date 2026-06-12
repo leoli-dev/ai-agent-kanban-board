@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { TASK_STATUSES } from '@akb/shared';
@@ -36,6 +37,27 @@ export async function taskRoutes(app: FastifyInstance, ctx: AppContext): Promise
     const updated = updateTask(ctx.db, ctx.hub, id, { status: body.status, blockedReason: null });
     ctx.orchestrator.nudge();
     return updated;
+  });
+
+  /** Delete a task: kill its active agent first, then remove rows + deps. */
+  app.delete('/api/tasks/:id', async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const task = getTask(ctx.db, id);
+    if (!task) return reply.code(404).send({ error: 'task not found' });
+    for (const run of ctx.runStore.listByTask(id)) {
+      if (run.status === 'running') ctx.runner.kill(run.id);
+    }
+    ctx.db.delete(schema.tasks).where(eq(schema.tasks.id, id)).run();
+    ctx.db.delete(schema.taskDependencies).where(eq(schema.taskDependencies.taskId, id)).run();
+    // Tasks that depended on this one become unblocked by design.
+    ctx.db
+      .delete(schema.taskDependencies)
+      .where(eq(schema.taskDependencies.dependsOnTaskId, id))
+      .run();
+    ctx.hub.publish(`board:${task.projectId}`, { type: 'task.deleted', taskId: id, projectId: task.projectId });
+    ctx.hub.publish('global', { type: 'task.deleted', taskId: id, projectId: task.projectId });
+    ctx.orchestrator.nudge();
+    reply.code(204);
   });
 
   /** Re-queue a failed/blocked/interrupted task for another attempt. */

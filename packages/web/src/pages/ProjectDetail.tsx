@@ -75,6 +75,18 @@ export default function ProjectDetail() {
       navigate(`/projects/${projectId}/planner`);
     },
   });
+  const pause = useMutation({
+    mutationFn: () => api.post(`/api/projects/${projectId}/pause`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['project', projectId] }),
+  });
+  const resume = useMutation({
+    mutationFn: () => api.post(`/api/projects/${projectId}/resume`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['project', projectId] }),
+  });
+  const removeProject = useMutation({
+    mutationFn: () => api.delete(`/api/projects/${projectId}`),
+    onSuccess: () => navigate('/projects'),
+  });
 
   if (isLoading) return <Loading />;
   if (isError || !project) return <LoadError error={error} onRetry={refetch} />;
@@ -140,6 +152,33 @@ export default function ProjectDetail() {
             <IconBoard width={15} height={15} /> {t('project.board')}
           </Link>
         )}
+        {project.status === 'running' && (
+          <button
+            onClick={() => pause.mutate()}
+            disabled={pause.isPending}
+            className="btn btn-ghost px-4 py-2 text-sm"
+          >
+            ⏸ {t('project.pause')}
+          </button>
+        )}
+        {project.status === 'paused' && (
+          <button
+            onClick={() => resume.mutate()}
+            disabled={resume.isPending}
+            className="btn btn-primary px-4 py-2 text-sm"
+          >
+            ▶ {t('project.resume')}
+          </button>
+        )}
+        <button
+          onClick={() => {
+            if (confirm(t('project.deleteConfirm', { name: project.name }))) removeProject.mutate();
+          }}
+          disabled={removeProject.isPending}
+          className="btn btn-danger ml-auto px-4 py-2 text-sm"
+        >
+          {t('common.delete')}
+        </button>
       </div>
 
       {startPlanning.isError && (

@@ -99,6 +99,9 @@ export const zh: Record<string, string> = {
   'project.rejectPlaceholder': '计划需要改什么？',
   'project.sendBack': '退回给规划师',
   'project.costToDate': '累计花费：{cost}',
+  'project.pause': '暂停',
+  'project.resume': '继续',
+  'project.deleteConfirm': '删除项目 "{name}"？运行中的智能体会被终止，工作区（计划、日志、上传文件）将被删除。你的 git 仓库和分支不受影响。',
 
   // planner chat
   'planner.title': '规划师',
@@ -120,6 +123,8 @@ export const zh: Record<string, string> = {
   'task.criteria': '验收标准',
   'task.kill': '终止智能体',
   'task.retry': '重试任务',
+  'task.delete': '删除任务',
+  'task.deleteConfirm': '删除任务 "{title}"？正在运行的智能体会被终止；依赖它的任务将解除阻塞。',
   'task.log': '日志',
   'task.logRun': '日志 — 运行 {id}',
   'task.noRuns': '该任务还没有运行记录。',

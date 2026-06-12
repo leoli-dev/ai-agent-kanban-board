@@ -104,10 +104,43 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     return { ...toProject(row), inputs, plans };
   });
 
+  /** Pause/resume: a paused project is skipped by the orchestrator; running
+   * agents are killed on pause and their tasks re-queued. */
+  app.post('/api/projects/:id/pause', async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const row = ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get();
+    if (!row) return reply.code(404).send({ error: 'project not found' });
+    if (row.status !== 'running') return reply.code(409).send({ error: 'project is not running' });
+    for (const run of ctx.runStore.listByProject(id)) {
+      if (run.status === 'running') ctx.runner.kill(run.id);
+    }
+    ctx.db.update(schema.projects).set({ status: 'paused' }).where(eq(schema.projects.id, id)).run();
+    const project = toProject(ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get()!);
+    ctx.hub.publish('global', { type: 'project.updated', project });
+    ctx.hub.publish(`board:${id}`, { type: 'project.updated', project });
+    return project;
+  });
+
+  app.post('/api/projects/:id/resume', async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const row = ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get();
+    if (!row) return reply.code(404).send({ error: 'project not found' });
+    if (row.status !== 'paused') return reply.code(409).send({ error: 'project is not paused' });
+    ctx.db.update(schema.projects).set({ status: 'running' }).where(eq(schema.projects.id, id)).run();
+    const project = toProject(ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get()!);
+    ctx.hub.publish('global', { type: 'project.updated', project });
+    ctx.hub.publish(`board:${id}`, { type: 'project.updated', project });
+    ctx.orchestrator.nudge();
+    return project;
+  });
+
   app.delete('/api/projects/:id', async (req, reply) => {
     const id = (req.params as { id: string }).id;
     const row = ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get();
     if (!row) return reply.code(404).send({ error: 'project not found' });
+    for (const run of ctx.runStore.listByProject(id)) {
+      if (run.status === 'running') ctx.runner.kill(run.id);
+    }
     ctx.db.delete(schema.projects).where(eq(schema.projects.id, id)).run();
     ctx.db.delete(schema.projectInputs).where(eq(schema.projectInputs.projectId, id)).run();
     ctx.db.delete(schema.tasks).where(eq(schema.tasks.projectId, id)).run();

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AgentRun, Project, Task } from '@akb/shared';
 import { api } from '../lib/api';
@@ -8,11 +8,12 @@ import { useT } from '../lib/i18n';
 import { formatCost, taskStatusStyle, timeAgo } from '../lib/format';
 import { Loading, LoadError } from '../components/QueryState';
 import { LogStream } from '../components/LogStream';
-import { IconArrowLeft, IconRetry, IconStop } from '../components/icons';
+import { IconArrowLeft, IconRetry, IconStop, IconX } from '../components/icons';
 
 export default function TaskDetail() {
   const t = useT();
   const { taskId = '' } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
@@ -49,6 +50,13 @@ export default function TaskDetail() {
   const kill = useMutation({
     mutationFn: (runId: string) => api.post(`/api/runs/${runId}/kill`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['taskRuns', taskId] }),
+  });
+  const removeTask = useMutation({
+    mutationFn: () => api.delete(`/api/tasks/${taskId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      navigate(task ? `/projects/${task.projectId}` : '/projects');
+    },
   });
 
   if (isLoading) return <Loading />;
@@ -136,6 +144,15 @@ export default function TaskDetail() {
             </button>
           )
         )}
+        <button
+          onClick={() => {
+            if (confirm(t('task.deleteConfirm', { title: task.title }))) removeTask.mutate();
+          }}
+          disabled={removeTask.isPending}
+          className="btn btn-danger ml-auto px-4 py-2 text-sm"
+        >
+          <IconX width={15} height={15} /> {t('task.delete')}
+        </button>
       </div>
 
       <section>

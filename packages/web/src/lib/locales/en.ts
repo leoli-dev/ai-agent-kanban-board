@@ -99,6 +99,9 @@ export const en: Record<string, string> = {
   'project.rejectPlaceholder': 'What should change in the plan?',
   'project.sendBack': 'Send back to planner',
   'project.costToDate': 'Cost to date: {cost}',
+  'project.pause': 'Pause',
+  'project.resume': 'Resume',
+  'project.deleteConfirm': 'Delete project "{name}"? Running agents are killed; the workspace (plan, logs, uploads) is removed. Your git repo and its branches are untouched.',
 
   // planner chat
   'planner.title': 'Planner',
@@ -120,6 +123,8 @@ export const en: Record<string, string> = {
   'task.criteria': 'Acceptance criteria',
   'task.kill': 'Kill agent',
   'task.retry': 'Retry task',
+  'task.delete': 'Delete task',
+  'task.deleteConfirm': 'Delete task "{title}"? Any running agent will be killed; tasks depending on it become unblocked.',
   'task.log': 'Log',
   'task.logRun': 'Log — run {id}',
   'task.noRuns': 'No runs yet for this task.',
