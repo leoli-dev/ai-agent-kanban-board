@@ -12,6 +12,8 @@ import { ProviderRegistry } from './providers/registry.js';
 import { RunStore } from './runner/run-store.js';
 import { AgentRunner } from './runner/agent-runner.js';
 import { PlannerService } from './agents/planner.js';
+import { Notifier } from './notify/notifier.js';
+import { Orchestrator } from './orchestrator/orchestrator.js';
 import type { AppContext } from './context.js';
 import { registerRoutes } from './routes/index.js';
 
@@ -28,6 +30,24 @@ async function main(): Promise<void> {
   const runner = new AgentRunner({ registry, runStore, settings, hub });
   runner.recoverOrphans();
   const planner = new PlannerService({ db, hub, runner, settings, workspacesDir: WORKSPACES_DIR });
+  const notifier = new Notifier(db, hub, settings);
+  const orchestrator = new Orchestrator({
+    db,
+    hub,
+    runner,
+    settings,
+    notifier,
+    workspacesDir: WORKSPACES_DIR,
+  });
+  runner.on('provider_down', (info: { profile: { name: string }; reason: string; permanent: boolean }) => {
+    void notifier.notify(
+      'provider_down',
+      `Provider ${info.permanent ? 'disabled' : 'cooling down'}: ${info.profile.name}`,
+      info.permanent
+        ? `Authentication failed — check the API key, then re-enable the profile.`
+        : `Quota/rate limit hit — will retry automatically after cooldown.`,
+    );
+  });
 
   const ctx: AppContext = {
     db,
@@ -39,6 +59,8 @@ async function main(): Promise<void> {
     runStore,
     runner,
     planner,
+    notifier,
+    orchestrator,
     dataDir: DATA_DIR,
     workspacesDir: WORKSPACES_DIR,
   };
@@ -70,6 +92,8 @@ async function main(): Promise<void> {
       }
     });
   }
+
+  orchestrator.start();
 
   await app.listen({ port: PORT, host: HOST });
   app.log.info(`agent-kanban-board listening on http://${HOST}:${PORT}`);

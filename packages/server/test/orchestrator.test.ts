@@ -1,0 +1,218 @@
+import { describe, expect, it } from 'vitest';
+import { execSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { eq } from 'drizzle-orm';
+import { nanoid } from 'nanoid';
+import { schema } from '../src/db/index.js';
+import { Notifier } from '../src/notify/notifier.js';
+import { Orchestrator } from '../src/orchestrator/orchestrator.js';
+import { updateTask } from '../src/db/task-store.js';
+import { scaffoldWorkspace } from '../src/workspace/workspace.js';
+import { addMockProfile, makeTestCtx, scripts, type MockScript, type TestCtx } from './helpers.js';
+
+function makeRepo(tmpDir: string): string {
+  const repo = path.join(tmpDir, 'repo');
+  fs.mkdirSync(repo, { recursive: true });
+  execSync(
+    'git init -q && git config user.email t@t && git config user.name t && echo hi > README.md && git add -A && git commit -qm init',
+    { cwd: repo },
+  );
+  return repo;
+}
+
+interface Fixture {
+  ctx: TestCtx;
+  orchestrator: Orchestrator;
+  projectId: string;
+  repo: string;
+  artifacts: string;
+}
+
+function makeFixture(taskSpecs: { id: string; deps: string[] }[]): Fixture {
+  const ctx = makeTestCtx();
+  const repo = makeRepo(ctx.tmpDir);
+  const projectId = nanoid(10);
+  const ws = scaffoldWorkspace(ctx.tmpDir, projectId);
+  ctx.db
+    .insert(schema.projects)
+    .values({
+      id: projectId,
+      name: 'E2E project',
+      prompt: 'Build things',
+      status: 'running',
+      workspacePath: ws.root,
+      targetRepoPath: repo,
+      gitBranch: 'agent/e2e',
+      createdAt: Date.now(),
+    })
+    .run();
+
+  const now = Date.now();
+  taskSpecs.forEach((spec, i) => {
+    ctx.db
+      .insert(schema.tasks)
+      .values({
+        id: spec.id,
+        projectId,
+        planStepId: spec.id,
+        title: `Task ${spec.id}`,
+        description: `Do ${spec.id}`,
+        status: 'backlog',
+        orderIndex: i,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    for (const dep of spec.deps) {
+      ctx.db.insert(schema.taskDependencies).values({ taskId: spec.id, dependsOnTaskId: dep }).run();
+    }
+  });
+
+  const notifier = new Notifier(ctx.db, ctx.hub, ctx.settings);
+  const orchestrator = new Orchestrator({
+    db: ctx.db,
+    hub: ctx.hub,
+    runner: ctx.runner,
+    settings: ctx.settings,
+    notifier,
+    workspacesDir: ctx.tmpDir,
+  });
+  return { ctx, orchestrator, projectId, repo, artifacts: ws.artifacts };
+}
+
+async function waitFor(cond: () => boolean, timeoutMs = 15_000): Promise<void> {
+  const start = Date.now();
+  while (!cond()) {
+    if (Date.now() - start > timeoutMs) throw new Error('waitFor timed out');
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+function taskStatus(ctx: TestCtx, id: string): string {
+  return ctx.db.select().from(schema.tasks).where(eq(schema.tasks.id, id)).get()!.status;
+}
+
+const phased = (phases: MockScript[], stateFile: string): MockScript =>
+  ({ events: [], phases, stateFile }) as unknown as MockScript;
+
+describe('Orchestrator (money test)', () => {
+  it('runs a 3-task plan sequentially with a mid-project quota fallback', async () => {
+    const f = makeFixture([
+      { id: 't1', deps: [] },
+      { id: 't2', deps: ['t1'] },
+      { id: 't3', deps: ['t2'] },
+    ]);
+    // Provider A: succeeds once, then hits quota. Provider B: always succeeds.
+    const profileA = addMockProfile(
+      f.ctx,
+      'coder',
+      phased([scripts.success('t1 done'), scripts.quota()], path.join(f.ctx.tmpDir, 'stateA')),
+    );
+    const profileB = addMockProfile(
+      f.ctx,
+      'coder',
+      phased([scripts.success('done'), scripts.success('done')], path.join(f.ctx.tmpDir, 'stateB')),
+    );
+
+    f.orchestrator.start();
+    await waitFor(() =>
+      ['t1', 't2', 't3'].every((id) => taskStatus(f.ctx, id) === 'to_review'),
+    );
+    f.orchestrator.stop();
+
+    // t2 fell back: provider A cooled down, both A and B have runs for t2.
+    const cooled = f.ctx.registry.get(profileA.id)!;
+    expect(cooled.cooldownUntil).toBeGreaterThan(Date.now());
+    const t2Runs = f.ctx.runStore.listByTask('t2');
+    expect(t2Runs.map((r) => r.providerProfileId).sort()).toEqual(
+      [profileA.id, profileB.id].sort(),
+    );
+    // t3 skipped the cooled provider entirely.
+    const t3Runs = f.ctx.runStore.listByTask('t3');
+    expect(t3Runs).toHaveLength(1);
+    expect(t3Runs[0]!.providerProfileId).toBe(profileB.id);
+
+    // Tasks were executed in dependency order.
+    const t1Run = f.ctx.runStore.listByTask('t1')[0]!;
+    expect(t1Run.startedAt).toBeLessThanOrEqual(t2Runs[t2Runs.length - 1]!.startedAt);
+  }, 30_000);
+
+  it('completes the project and notifies when all tasks reach done', async () => {
+    const f = makeFixture([{ id: 't1', deps: [] }]);
+    addMockProfile(f.ctx, 'coder', scripts.success());
+
+    f.orchestrator.start();
+    await waitFor(() => taskStatus(f.ctx, 't1') === 'to_review');
+
+    // Simulate the manual review/test pass (P6 automates this).
+    updateTask(f.ctx.db, f.ctx.hub, 't1', { status: 'done' });
+    f.orchestrator.nudge();
+
+    await waitFor(
+      () =>
+        f.ctx.db.select().from(schema.projects).where(eq(schema.projects.id, f.projectId)).get()!
+          .status === 'done',
+    );
+    f.orchestrator.stop();
+
+    const notifications = f.ctx.db.select().from(schema.notifications).all();
+    expect(notifications.some((n) => n.type === 'project_done')).toBe(true);
+  }, 30_000);
+
+  it('handles a stuck agent: debugger diagnosis, kill, retry, then success', async () => {
+    const f = makeFixture([{ id: 't1', deps: [] }]);
+    f.ctx.settings.update({ stuckThresholdMin: 0.005 }); // 300ms for the test
+    addMockProfile(
+      f.ctx,
+      'coder',
+      phased([scripts.stall(30_000), scripts.success('recovered')], path.join(f.ctx.tmpDir, 'stateS')),
+    );
+    addMockProfile(f.ctx, 'debugger', scripts.success('Likely cause: interactive prompt hang.'));
+
+    f.orchestrator.start();
+    await waitFor(() => taskStatus(f.ctx, 't1') === 'to_review', 25_000);
+    f.orchestrator.stop();
+
+    const task = f.ctx.db.select().from(schema.tasks).where(eq(schema.tasks.id, 't1')).get()!;
+    expect(task.retryCount).toBe(1);
+
+    const runs = f.ctx.runStore.listByTask('t1');
+    expect(runs.some((r) => r.status === 'stuck')).toBe(true);
+    expect(runs.some((r) => r.status === 'succeeded')).toBe(true);
+
+    const diagnoses = fs.readdirSync(f.artifacts).filter((x) => x.startsWith('diagnosis-t1-'));
+    expect(diagnoses).toHaveLength(1);
+    expect(fs.readFileSync(path.join(f.artifacts, diagnoses[0]!), 'utf8')).toContain(
+      'interactive prompt hang',
+    );
+  }, 30_000);
+
+  it('fails a task after retries are exhausted and notifies', async () => {
+    const f = makeFixture([{ id: 't1', deps: [] }]);
+    f.ctx.settings.update({ maxRetries: 1 });
+    addMockProfile(f.ctx, 'coder', scripts.taskFail());
+
+    f.orchestrator.start();
+    await waitFor(() => taskStatus(f.ctx, 't1') === 'failed');
+    f.orchestrator.stop();
+
+    const task = f.ctx.db.select().from(schema.tasks).where(eq(schema.tasks.id, 't1')).get()!;
+    expect(task.retryCount).toBe(1);
+    const notifications = f.ctx.db.select().from(schema.notifications).all();
+    expect(notifications.some((n) => n.type === 'task_failed')).toBe(true);
+  }, 30_000);
+
+  it('blocks a task when the repo has uncommitted user changes', async () => {
+    const f = makeFixture([{ id: 't1', deps: [] }]);
+    addMockProfile(f.ctx, 'coder', scripts.success());
+    fs.writeFileSync(path.join(f.repo, 'dirty.txt'), 'uncommitted');
+
+    f.orchestrator.start();
+    await waitFor(() => taskStatus(f.ctx, 't1') === 'blocked');
+    f.orchestrator.stop();
+
+    const task = f.ctx.db.select().from(schema.tasks).where(eq(schema.tasks.id, 't1')).get()!;
+    expect(task.blockedReason).toContain('uncommitted');
+  }, 30_000);
+});

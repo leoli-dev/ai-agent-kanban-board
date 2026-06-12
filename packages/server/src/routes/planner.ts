@@ -47,7 +47,9 @@ export async function plannerRoutes(app: FastifyInstance, ctx: AppContext): Prom
       return reply.code(409).send({ error: 'no plan awaiting approval' });
     }
     try {
-      return ctx.planner.approve(id);
+      const result = ctx.planner.approve(id);
+      ctx.orchestrator.nudge();
+      return result;
     } catch (err) {
       return reply.code(422).send({ error: `plan could not be converted to tasks: ${String(err)}` });
     }

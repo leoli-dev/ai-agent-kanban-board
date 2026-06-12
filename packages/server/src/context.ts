@@ -7,6 +7,8 @@ import type { ProviderRegistry } from './providers/registry.js';
 import type { RunStore } from './runner/run-store.js';
 import type { AgentRunner } from './runner/agent-runner.js';
 import type { PlannerService } from './agents/planner.js';
+import type { Notifier } from './notify/notifier.js';
+import type { Orchestrator } from './orchestrator/orchestrator.js';
 
 /**
  * Dependency container threaded through routes and services so tests can
@@ -23,6 +25,8 @@ export interface AppContext {
   runStore: RunStore;
   runner: AgentRunner;
   planner: PlannerService;
+  notifier: Notifier;
+  orchestrator: Orchestrator;
   dataDir: string;
   workspacesDir: string;
 }

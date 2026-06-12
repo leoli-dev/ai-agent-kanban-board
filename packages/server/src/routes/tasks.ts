@@ -33,6 +33,20 @@ export async function taskRoutes(app: FastifyInstance, ctx: AppContext): Promise
       .parse(req.body);
     const existing = getTask(ctx.db, id);
     if (!existing) return reply.code(404).send({ error: 'task not found' });
-    return updateTask(ctx.db, ctx.hub, id, { status: body.status, blockedReason: null });
+    const updated = updateTask(ctx.db, ctx.hub, id, { status: body.status, blockedReason: null });
+    ctx.orchestrator.nudge();
+    return updated;
+  });
+
+  /** Re-queue a failed/blocked/interrupted task for another attempt. */
+  app.post('/api/tasks/:id/retry', async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const task = getTask(ctx.db, id);
+    if (!task) return reply.code(404).send({ error: 'task not found' });
+    const active = ctx.runStore.listByTask(id).some((r) => r.status === 'running');
+    if (active) return reply.code(409).send({ error: 'task has an active agent — kill it first' });
+    const updated = updateTask(ctx.db, ctx.hub, id, { status: 'backlog', blockedReason: null });
+    ctx.orchestrator.nudge();
+    return updated;
   });
 }
