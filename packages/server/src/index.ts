@@ -14,6 +14,7 @@ import { AgentRunner } from './runner/agent-runner.js';
 import { PlannerService } from './agents/planner.js';
 import { Notifier } from './notify/notifier.js';
 import { Orchestrator } from './orchestrator/orchestrator.js';
+import { UsageService } from './usage/usage-service.js';
 import type { AppContext } from './context.js';
 import { registerRoutes } from './routes/index.js';
 
@@ -62,6 +63,7 @@ async function main(): Promise<void> {
     planner,
     notifier,
     orchestrator,
+    usage: new UsageService(secrets, runStore),
     dataDir: DATA_DIR,
     workspacesDir: WORKSPACES_DIR,
   };

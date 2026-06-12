@@ -12,6 +12,7 @@ import { api, ApiError } from '../lib/api';
 import { LANGS, useI18n, useT } from '../lib/i18n';
 import { IconCheck, IconPlus, IconX } from '../components/icons';
 import { ProviderBuilder } from '../components/ProviderBuilder';
+import { UsagePanel } from '../components/UsagePanel';
 
 export default function Settings() {
   const t = useT();
@@ -92,6 +93,7 @@ function ProvidersSection() {
   const [draft, setDraft] = useState<ProfileDraft | null>(null);
   const [building, setBuilding] = useState(false);
   const [testResult, setTestResult] = useState<Record<string, TestOutcome | 'pending'>>({});
+  const [usageOpen, setUsageOpen] = useState<Record<string, boolean>>({});
 
   const { data: providers = [] } = useQuery({
     queryKey: ['providers'],
@@ -201,6 +203,13 @@ function ProvidersSection() {
                 </div>
                 <div className="flex shrink-0 gap-1.5">
                   <button
+                    onClick={() => setUsageOpen((s) => ({ ...s, [p.id]: !s[p.id] }))}
+                    title={t('usage.hint')}
+                    className={`btn px-2.5 py-1 text-xs ${usageOpen[p.id] ? 'btn-primary' : 'btn-ghost'}`}
+                  >
+                    {t('usage.button')}
+                  </button>
+                  <button
                     onClick={() => runTest(p.id)}
                     disabled={result === 'pending'}
                     title={t('settings.provider.testHint')}
@@ -254,6 +263,7 @@ function ProvidersSection() {
                   {result.text}
                 </p>
               )}
+              {usageOpen[p.id] && <UsagePanel providerId={p.id} />}
             </li>
           );
         })}

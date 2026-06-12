@@ -45,7 +45,16 @@ export const PROVIDER_TYPES: ProviderType[] = [
     emoji: '✴︎',
     engine: 'claude-code',
     secretName: 'ANTHROPIC_API_KEY',
-    models: ['(default)', 'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
+    models: [
+      '(default)',
+      'claude-fable-5',
+      'claude-opus-4-8',
+      'claude-opus-4-7',
+      'claude-sonnet-4-6',
+      'claude-sonnet-4-5',
+      'claude-haiku-4-5',
+      'claude-opus-4-1',
+    ],
     hasEffort: true,
     hasCliAuth: true,
   },
@@ -56,7 +65,19 @@ export const PROVIDER_TYPES: ProviderType[] = [
     emoji: '◎',
     engine: 'codex',
     secretName: 'OPENAI_API_KEY',
-    models: ['(default)', 'gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.2', 'gpt-5.1-codex-mini'],
+    models: [
+      '(default)',
+      'gpt-5.5-codex',
+      'gpt-5.5-codex-pro',
+      'gpt-5.5-codex-mini',
+      'gpt-5.5',
+      'gpt-5.5-pro',
+      'gpt-5.3-codex',
+      'gpt-5.2-codex',
+      'gpt-5.2',
+      'gpt-5.1-codex-max',
+      'gpt-5.1-codex-mini',
+    ],
     hasCliAuth: true,
   },
   {
@@ -67,7 +88,13 @@ export const PROVIDER_TYPES: ProviderType[] = [
     engine: 'claude-code',
     secretName: 'DEEPSEEK_API_KEY',
     baseUrl: { intl: 'https://api.deepseek.com/anthropic' },
-    models: ['deepseek-v4-pro[1m]', 'deepseek-v4-pro', 'deepseek-v4-flash'],
+    models: [
+      'deepseek-v4-pro[1m]',
+      'deepseek-v4-pro',
+      'deepseek-v4-flash',
+      'deepseek-chat',
+      'deepseek-reasoner',
+    ],
     hasEffort: true,
   },
   {
@@ -78,7 +105,16 @@ export const PROVIDER_TYPES: ProviderType[] = [
     engine: 'claude-code',
     secretName: 'MOONSHOT_API_KEY',
     baseUrl: { intl: 'https://api.moonshot.ai/anthropic', cn: 'https://api.moonshot.cn/anthropic' },
-    models: ['kimi-for-coding', 'kimi-k2.5', 'kimi-k2-thinking', 'kimi-k2-turbo-preview'],
+    models: [
+      'kimi-for-coding',
+      'kimi-k2.5',
+      'kimi-k2.5-thinking',
+      'kimi-k2-thinking',
+      'kimi-k2-thinking-turbo',
+      'kimi-k2-turbo-preview',
+      'kimi-k2-0905-preview',
+      'kimi-latest',
+    ],
     hasEffort: true,
   },
   {
@@ -92,7 +128,14 @@ export const PROVIDER_TYPES: ProviderType[] = [
       intl: 'https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy',
       cn: 'https://dashscope.aliyuncs.com/api/v2/apps/claude-code-proxy',
     },
-    models: ['qwen3-coder-plus', 'qwen3-coder-flash', 'qwen3-max'],
+    models: [
+      'qwen3.5-coder-plus',
+      'qwen3-coder-plus',
+      'qwen3-coder-flash',
+      'qwen3.5-plus',
+      'qwen3-max',
+      'qwen3-coder-480b-a35b-instruct',
+    ],
     hasEffort: true,
   },
   {
@@ -106,7 +149,7 @@ export const PROVIDER_TYPES: ProviderType[] = [
       intl: 'https://api.z.ai/api/anthropic',
       cn: 'https://open.bigmodel.cn/api/anthropic',
     },
-    models: ['glm-5', 'glm-4.6', 'glm-4.5-air'],
+    models: ['glm-5', 'glm-4.7', 'glm-4.6', 'glm-4.5-air', 'glm-4.5-flash'],
     hasEffort: true,
   },
   {
@@ -120,7 +163,7 @@ export const PROVIDER_TYPES: ProviderType[] = [
       intl: 'https://api.minimax.io/anthropic',
       cn: 'https://api.minimaxi.com/anthropic',
     },
-    models: ['MiniMax-M2.5', 'MiniMax-M2.1'],
+    models: ['MiniMax-M2.5', 'MiniMax-M2.1', 'MiniMax-M2', 'MiniMax-Text-01'],
     hasEffort: true,
   },
   {
@@ -234,7 +277,7 @@ export function buildProvider(s: BuilderState): BuiltProvider {
   } else if (s.typeId === 'local') {
     env.ANTHROPIC_BASE_URL = s.baseUrl.trim();
     env.ANTHROPIC_AUTH_TOKEN = s.localToken.trim() || 'local';
-    const localModel = s.customModel.trim();
+    const localModel = model || s.customModel.trim();
     if (localModel) {
       env.ANTHROPIC_MODEL = localModel;
       env.ANTHROPIC_DEFAULT_OPUS_MODEL = localModel;
@@ -257,7 +300,7 @@ export function buildProvider(s: BuilderState): BuiltProvider {
   return {
     name: s.name.trim(),
     engine: 'claude-code',
-    modelLabel: model || (s.typeId === 'local' ? s.customModel.trim() || null : null),
+    modelLabel: model || s.customModel.trim() || null,
     env,
     secret,
   };

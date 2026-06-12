@@ -9,6 +9,7 @@ import type { AgentRunner } from './runner/agent-runner.js';
 import type { PlannerService } from './agents/planner.js';
 import type { Notifier } from './notify/notifier.js';
 import type { Orchestrator } from './orchestrator/orchestrator.js';
+import type { UsageService } from './usage/usage-service.js';
 
 /**
  * Dependency container threaded through routes and services so tests can
@@ -27,6 +28,7 @@ export interface AppContext {
   planner: PlannerService;
   notifier: Notifier;
   orchestrator: Orchestrator;
+  usage: UsageService;
   dataDir: string;
   workspacesDir: string;
 }

@@ -55,6 +55,13 @@ export async function providerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     };
   });
 
+  /** Subscription/quota usage for a provider (best-effort, vendor-specific). */
+  app.get('/api/providers/:id/usage', async (req, reply) => {
+    const profile = ctx.registry.get((req.params as { id: string }).id);
+    if (!profile) return reply.code(404).send({ error: 'provider not found' });
+    return ctx.usage.forProfile(profile);
+  });
+
   app.get('/api/roles', async () => {
     const all = ctx.registry.assignments();
     return AGENT_ROLES.map((role) => ({

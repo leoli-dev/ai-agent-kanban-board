@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import { useT } from '../lib/i18n';
+import { ModelPicker } from './ModelPicker';
 import {
   buildProvider,
   CLAUDE_EFFORT_LEVELS,
@@ -85,6 +86,8 @@ export function ProviderBuilder({
   const queryClient = useQueryClient();
   const [state, setState] = useState<BuilderState | null>(null);
   const [showEnv, setShowEnv] = useState(false);
+  const [fetchedModels, setFetchedModels] = useState<string[] | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const type = state ? PROVIDER_TYPES.find((x) => x.id === state.typeId)! : null;
   const openRouterModels = useOpenRouterModels(
@@ -101,6 +104,37 @@ export function ProviderBuilder({
   }, [state?.region, state?.typeId]);
 
   const built = useMemo(() => (state && type ? buildProvider(state) : null), [state, type]);
+
+  const fetchModels = useMutation({
+    mutationFn: async () => {
+      if (!built || !type) return [];
+      // Codex lists models from the OpenAI API root; claude engines from
+      // their (Anthropic-compatible) base URL.
+      const env =
+        type.engine === 'codex'
+          ? {
+              ANTHROPIC_BASE_URL: 'https://api.openai.com',
+              ANTHROPIC_AUTH_TOKEN: '${SECRET:OPENAI_API_KEY}',
+            }
+          : { ...built.env };
+      const res = await api.post<{ models: string[] }>('/api/models/list', { env });
+      return res.models;
+    },
+    onSuccess: (models) => {
+      setFetchError(null);
+      if (models.length) setFetchedModels(models);
+    },
+    onError: (err) => {
+      setFetchError(err instanceof ApiError ? err.message : String(err));
+    },
+  });
+
+  // Reset fetched list when switching provider type.
+  useEffect(() => {
+    setFetchedModels(null);
+    setFetchError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.typeId]);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -157,13 +191,14 @@ export function ProviderBuilder({
   /* ---------- step 2: configure with controls ---------- */
   const isCodex = type.engine === 'codex';
   const effortOptions = isCodex ? CODEX_EFFORT_LEVELS : CLAUDE_EFFORT_LEVELS;
-  const models = state.typeId === 'openrouter' ? openRouterModels : type.models;
-  const showModelPicker = models.length > 0;
-  const showCustomModel = state.model === 'custom' || state.typeId === 'local';
+  const baseModels = state.typeId === 'openrouter' ? openRouterModels : type.models;
+  const models = fetchedModels
+    ? [...(baseModels.includes('(default)') ? ['(default)'] : []), ...fetchedModels]
+    : baseModels;
+  const showModelPicker = models.length > 0 || state.typeId === 'local';
+  const canFetchModels = state.typeId !== 'openrouter';
   const canSave =
-    state.name.trim().length > 0 &&
-    (state.model !== 'custom' || state.customModel.trim().length > 0) &&
-    (state.typeId !== 'local' || state.baseUrl.trim().length > 0);
+    state.name.trim().length > 0 && (state.typeId !== 'local' || state.baseUrl.trim().length > 0);
 
   return (
     <div className="card mt-3 border-accent-500/30 p-4">
@@ -250,66 +285,48 @@ export function ProviderBuilder({
         {showModelPicker && (
           <Field
             label={t('builder.model')}
-            hint={state.typeId === 'openrouter' ? t('builder.model.openrouter') : undefined}
+            hint={
+              state.typeId === 'openrouter'
+                ? t('builder.model.openrouter')
+                : state.typeId === 'local'
+                  ? t('builder.model.local.help')
+                  : t('builder.model.pickerHint')
+            }
           >
-            {models.length > 12 ? (
-              <>
-                <input
-                  list="builder-models"
-                  value={state.model === 'custom' ? state.customModel : state.model}
-                  onChange={(e) => setState({ ...state, model: 'custom', customModel: e.target.value })}
-                  className="input-base max-w-md font-mono"
-                  placeholder={t('builder.model.search')}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="min-w-64 flex-1">
+                <ModelPicker
+                  models={models}
+                  value={state.model}
+                  onChange={(m) => setState({ ...state, model: m })}
+                  placeholder={
+                    state.typeId === 'local' ? 'Qwen3.6-35B-A3B-MLX-8bit' : t('builder.model.search')
+                  }
                 />
-                <datalist id="builder-models">
-                  {models.map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
-              </>
-            ) : (
-              <div className="flex flex-wrap items-center gap-1.5">
-                {models.map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setState({ ...state, model: m })}
-                    className={`rounded-lg border px-3 py-1.5 font-mono text-xs transition-colors duration-150 ${
-                      state.model === m
-                        ? 'border-accent-400 bg-accent-400/15 text-accent-200'
-                        : 'border-ink-700 text-ink-300 hover:border-ink-500'
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
+              </div>
+              {canFetchModels && (
                 <button
                   type="button"
-                  onClick={() => setState({ ...state, model: 'custom' })}
-                  className={`rounded-lg border px-3 py-1.5 text-xs transition-colors duration-150 ${
-                    state.model === 'custom'
-                      ? 'border-accent-400 bg-accent-400/15 text-accent-200'
-                      : 'border-dashed border-ink-700 text-ink-400 hover:border-ink-500'
-                  }`}
+                  onClick={() => fetchModels.mutate()}
+                  disabled={fetchModels.isPending}
+                  className="btn btn-ghost px-3 py-2 text-xs"
+                  title={t('builder.model.fetch.help')}
                 >
-                  {t('builder.model.custom')}
+                  {fetchModels.isPending ? (
+                    <span className="h-3 w-3 animate-spin rounded-full border border-ink-500 border-t-accent-400" />
+                  ) : (
+                    '↻'
+                  )}
+                  {t('builder.model.fetch')}
                 </button>
-              </div>
+              )}
+            </div>
+            {fetchedModels && (
+              <p className="mt-1 text-[11px] text-teal-300">
+                {t('builder.model.fetched', { n: fetchedModels.length })}
+              </p>
             )}
-          </Field>
-        )}
-
-        {(showCustomModel && state.typeId !== 'openrouter' && models.length <= 12) && (
-          <Field
-            label={state.typeId === 'local' ? t('builder.model.local') : t('builder.model.customLabel')}
-            hint={state.typeId === 'local' ? t('builder.model.local.help') : undefined}
-          >
-            <input
-              value={state.customModel}
-              onChange={(e) => setState({ ...state, customModel: e.target.value })}
-              className="input-base max-w-md font-mono"
-              placeholder={state.typeId === 'local' ? 'Qwen3.6-35B-A3B-MLX-8bit' : 'model-id'}
-            />
+            {fetchError && <p className="mt-1 text-[11px] text-red-300">{fetchError}</p>}
           </Field>
         )}
 

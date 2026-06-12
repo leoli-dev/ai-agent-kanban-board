@@ -101,6 +101,17 @@ export class RunStore {
       .map(toAgentRun);
   }
 
+  listByProfile(profileId: string, limit = 10): AgentRun[] {
+    return this.db
+      .select()
+      .from(schema.agentRuns)
+      .where(eq(schema.agentRuns.providerProfileId, profileId))
+      .orderBy(desc(schema.agentRuns.startedAt))
+      .limit(limit)
+      .all()
+      .map(toAgentRun);
+  }
+
   listRunning(): AgentRun[] {
     return this.db
       .select()
