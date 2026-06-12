@@ -5,7 +5,8 @@ import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { AnswersFileSchema } from '@akb/shared';
 import { schema } from '../db/index.js';
-import { toPlannerMessage, toTask } from '../db/mappers.js';
+import { toPlannerMessage } from '../db/mappers.js';
+import { listProjectTasks } from '../db/task-store.js';
 import type { AppContext } from '../context.js';
 import { workspacePaths } from '../workspace/workspace.js';
 
@@ -100,20 +101,7 @@ export async function plannerRoutes(app: FastifyInstance, ctx: AppContext): Prom
   });
 
   /** Tasks for a project (board + detail pages). */
-  app.get('/api/projects/:id/tasks', async (req) => {
-    const id = (req.params as { id: string }).id;
-    const rows = ctx.db
-      .select()
-      .from(schema.tasks)
-      .where(eq(schema.tasks.projectId, id))
-      .orderBy(schema.tasks.orderIndex)
-      .all();
-    const deps = ctx.db.select().from(schema.taskDependencies).all();
-    return rows.map((r) =>
-      toTask(
-        r,
-        deps.filter((d) => d.taskId === r.id).map((d) => d.dependsOnTaskId),
-      ),
-    );
-  });
+  app.get('/api/projects/:id/tasks', async (req) =>
+    listProjectTasks(ctx.db, (req.params as { id: string }).id),
+  );
 }
