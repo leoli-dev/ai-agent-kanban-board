@@ -1,9 +1,9 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import ReactMarkdown from 'react-markdown';
 import type { AgentRun, PlanDocument, Project, ProjectInput, Task } from '@akb/shared';
 import { api } from '../lib/api';
+import { Markdown } from '../components/Markdown';
 import { useWsTopics } from '../lib/ws';
 import { useT } from '../lib/i18n';
 import { formatCost, projectStatusStyle, taskStatusStyle } from '../lib/format';
@@ -127,9 +127,7 @@ export default function ProjectDetail() {
           <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-teal-300">
             🎉 {t('project.report')}
           </h2>
-          <div className="prose prose-sm prose-invert max-w-none prose-headings:tracking-tight">
-            <ReactMarkdown>{report.md}</ReactMarkdown>
-          </div>
+          <Markdown>{report.md}</Markdown>
         </section>
       )}
 
@@ -245,9 +243,7 @@ export default function ProjectDetail() {
               </button>
             </div>
           )}
-          <div className="prose prose-sm prose-invert max-w-none prose-headings:tracking-tight">
-            <ReactMarkdown>{planMd.md}</ReactMarkdown>
-          </div>
+          <Markdown>{planMd.md}</Markdown>
         </section>
       )}
 

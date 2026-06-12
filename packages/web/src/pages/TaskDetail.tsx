@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import ReactMarkdown from 'react-markdown';
 import type { AgentRun, Project, ProviderProfile, Task } from '@akb/shared';
 import { api } from '../lib/api';
+import { Markdown } from '../components/Markdown';
 import { useWsTopics } from '../lib/ws';
 import { useT } from '../lib/i18n';
 import { formatCost, taskStatusStyle, timeAgo } from '../lib/format';
@@ -318,9 +318,7 @@ function StageSummaries({
                 {b.model}
               </span>
             </p>
-            <div className="prose prose-sm prose-invert max-w-none text-[13px]">
-              <ReactMarkdown>{b.body.slice(0, 3000)}</ReactMarkdown>
-            </div>
+            <Markdown>{b.body.slice(0, 3000)}</Markdown>
           </div>
         ))}
       </div>

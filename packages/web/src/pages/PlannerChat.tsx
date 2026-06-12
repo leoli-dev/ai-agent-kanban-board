@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import ReactMarkdown from 'react-markdown';
 import type { AgentRun, PlannerMessage, Project, Question } from '@akb/shared';
 import { api } from '../lib/api';
+import { Markdown } from '../components/Markdown';
 import { useWsTopics } from '../lib/ws';
 import { useT } from '../lib/i18n';
 import { projectStatusStyle } from '../lib/format';
@@ -200,9 +200,7 @@ function MessageBubble({ message }: { message: PlannerMessage }) {
       <p className="mb-1 text-xs font-semibold text-ink-500">
         {isUser ? t('planner.you') : t('planner.agent')}
       </p>
-      <div className="prose prose-sm prose-invert max-w-none">
-        <ReactMarkdown>{text}</ReactMarkdown>
-      </div>
+      <Markdown>{text}</Markdown>
     </div>
   );
 }
