@@ -51,3 +51,7 @@ Agents work on a dedicated `agent/<project>` branch of your repo; you merge when
 - All runs are logged as raw NDJSON under `data/workspaces/<project>/logs/`; live streaming in the task view.
 - The `mock` engine replays scripted streams — used by the test suite (`pnpm test`, 21 integration tests) so the whole pipeline is testable without spending tokens.
 - Headless agents run with permissions skipped (`--dangerously-skip-permissions` / codex sandbox) — single-user tool, dedicated branch, local machine. Don't point it at repos with uncommitted work (the orchestrator refuses to start tasks on a dirty tree).
+
+## License
+
+[MIT](LICENSE)
