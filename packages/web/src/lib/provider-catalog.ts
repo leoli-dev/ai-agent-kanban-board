@@ -208,6 +208,31 @@ export const PROVIDER_TYPES: ProviderType[] = [
   },
 ];
 
+/**
+ * Infer the right static model list for an existing profile from its engine
+ * and base URL (used by the raw edit form, where only env vars are known).
+ */
+export function modelsForEnv(engine: EngineId, env: Record<string, string>): string[] {
+  if (engine === 'codex') return PROVIDER_TYPES.find((p) => p.id === 'codex')!.models;
+  const base = (env.ANTHROPIC_BASE_URL ?? '').toLowerCase();
+  if (!base || base.includes('api.anthropic.com')) {
+    return PROVIDER_TYPES.find((p) => p.id === 'claude')!.models;
+  }
+  for (const type of PROVIDER_TYPES) {
+    if (!type.baseUrl) continue;
+    for (const url of [type.baseUrl.intl, type.baseUrl.cn]) {
+      if (!url) continue;
+      try {
+        const host = new URL(url).host;
+        if (host && base.includes(host)) return type.models;
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return [];
+}
+
 export const CLAUDE_EFFORT_LEVELS = ['(default)', 'low', 'medium', 'high', 'max'] as const;
 export const CODEX_EFFORT_LEVELS = ['(default)', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const;
 export const CODEX_SANDBOXES = ['workspace-write', 'read-only', 'danger-full-access'] as const;

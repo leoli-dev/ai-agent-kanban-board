@@ -150,6 +150,7 @@ export const en: Record<string, string> = {
     'claude-code: runs the Claude Code CLI — works with any Anthropic-compatible API. codex: runs the OpenAI Codex CLI. mock: scripted fake engine for testing the pipeline without spending tokens.',
   'settings.provider.model': 'Model label',
   'settings.provider.model.help': 'For codex this is passed as -m. For claude-code set the model via ANTHROPIC_MODEL env instead.',
+  'settings.provider.model.sync': 'codex: passed as -m. claude-code: picking here also updates the ANTHROPIC_MODEL env rows below.',
   'settings.provider.env': 'Environment variables',
   'settings.provider.env.help':
     'Injected into the agent process. Values may reference secrets as ${SECRET:NAME} — resolved from the Secrets vault below, falling back to your shell environment.',

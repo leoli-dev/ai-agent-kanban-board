@@ -13,6 +13,8 @@ import { LANGS, useI18n, useT } from '../lib/i18n';
 import { IconCheck, IconPlus, IconX } from '../components/icons';
 import { ProviderBuilder } from '../components/ProviderBuilder';
 import { UsagePanel } from '../components/UsagePanel';
+import { ModelPicker } from '../components/ModelPicker';
+import { modelsForEnv } from '../lib/provider-catalog';
 
 export default function Settings() {
   const t = useT();
@@ -319,15 +321,7 @@ function ProvidersSection() {
             {t('settings.provider.engine.help')}
           </p>
 
-          <label className="mt-3 block text-xs text-ink-400">
-            {t('settings.provider.model')}
-            <input
-              value={draft.modelLabel}
-              onChange={(e) => setDraft({ ...draft, modelLabel: e.target.value })}
-              className="input-base mt-1 font-mono"
-            />
-          </label>
-          <p className="mt-1.5 text-[11px] text-ink-500">{t('settings.provider.model.help')}</p>
+          <DraftModelField draft={draft} setDraft={setDraft} />
 
           <p className="mb-1 mt-4 text-xs font-medium text-ink-300">{t('settings.provider.env')}</p>
           <p className="mb-2 text-[11px] leading-relaxed text-ink-500">
@@ -390,6 +384,100 @@ function ProvidersSection() {
         </div>
       )}
     </section>
+  );
+}
+
+/** Model picker for the raw edit form: infers the model list from the
+ * engine/base-URL, supports live discovery, and keeps ANTHROPIC_MODEL env
+ * rows in sync for claude-code engines. */
+function DraftModelField({
+  draft,
+  setDraft,
+}: {
+  draft: ProfileDraft;
+  setDraft: (d: ProfileDraft) => void;
+}) {
+  const t = useT();
+  const [fetched, setFetched] = useState<string[] | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const envRecord = Object.fromEntries(
+    draft.env.filter((e) => e.key.trim()).map((e) => [e.key.trim(), e.value]),
+  );
+  const models = fetched ?? modelsForEnv(draft.engine, envRecord);
+
+  const fetchModels = useMutation({
+    mutationFn: async () => {
+      const env =
+        draft.engine === 'codex'
+          ? {
+              ANTHROPIC_BASE_URL: 'https://api.openai.com',
+              ANTHROPIC_AUTH_TOKEN: '${SECRET:OPENAI_API_KEY}',
+            }
+          : envRecord;
+      const res = await api.post<{ models: string[] }>('/api/models/list', { env });
+      return res.models;
+    },
+    onSuccess: (list) => {
+      setFetchError(null);
+      if (list.length) setFetched(list);
+    },
+    onError: (err) => setFetchError(err instanceof ApiError ? err.message : String(err)),
+  });
+
+  function applyModel(model: string) {
+    const value = model === '(default)' ? '' : model;
+    let env = draft.env;
+    if (draft.engine === 'claude-code') {
+      // Keep the env vars that actually select the model in sync.
+      const syncKeys = ['ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL'];
+      const present = env.filter((r) => syncKeys.includes(r.key.trim()));
+      if (value) {
+        if (present.length > 0) {
+          env = env.map((r) => (syncKeys.includes(r.key.trim()) ? { ...r, value } : r));
+        } else {
+          env = [...env, { key: 'ANTHROPIC_MODEL', value }];
+        }
+      } else {
+        env = env.filter((r) => !syncKeys.includes(r.key.trim()));
+      }
+    }
+    setDraft({ ...draft, modelLabel: value, env });
+  }
+
+  return (
+    <div className="mt-3">
+      <p className="mb-1 text-xs text-ink-400">{t('settings.provider.model')}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-64 flex-1">
+          <ModelPicker
+            models={models}
+            value={draft.modelLabel}
+            onChange={applyModel}
+            placeholder={t('builder.model.search')}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => fetchModels.mutate()}
+          disabled={fetchModels.isPending}
+          className="btn btn-ghost px-3 py-2 text-xs"
+          title={t('builder.model.fetch.help')}
+        >
+          {fetchModels.isPending ? (
+            <span className="h-3 w-3 animate-spin rounded-full border border-ink-500 border-t-accent-400" />
+          ) : (
+            '↻'
+          )}
+          {t('builder.model.fetch')}
+        </button>
+      </div>
+      {fetched && (
+        <p className="mt-1 text-[11px] text-teal-300">{t('builder.model.fetched', { n: fetched.length })}</p>
+      )}
+      {fetchError && <p className="mt-1 text-[11px] text-red-300">{fetchError}</p>}
+      <p className="mt-1.5 text-[11px] text-ink-500">{t('settings.provider.model.sync')}</p>
+    </div>
   );
 }
 

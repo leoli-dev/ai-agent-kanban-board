@@ -150,6 +150,7 @@ export const zh: Record<string, string> = {
     'claude-code：运行 Claude Code CLI，兼容任何 Anthropic 协议 API。codex：运行 OpenAI Codex CLI。mock：脚本化的假引擎，用于不花 token 地测试流水线。',
   'settings.provider.model': '模型标识',
   'settings.provider.model.help': 'codex 会作为 -m 传入。claude-code 请改用 ANTHROPIC_MODEL 环境变量指定模型。',
+  'settings.provider.model.sync': 'codex：作为 -m 传入。claude-code：在这里选择会同步更新下方的 ANTHROPIC_MODEL 环境变量。',
   'settings.provider.env': '环境变量',
   'settings.provider.env.help':
     '注入到智能体进程。值可以用 ${SECRET:NAME} 引用密钥——先从下方密钥库解析，找不到再回退到服务器的环境变量。',
