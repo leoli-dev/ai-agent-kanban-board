@@ -5,6 +5,7 @@ import { runRoutes } from './runs.js';
 import { settingsRoutes } from './settings.js';
 import { debugRoutes } from './debug.js';
 import { projectRoutes } from './projects.js';
+import { plannerRoutes } from './planner.js';
 
 export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
   await providerRoutes(app, ctx);
@@ -12,4 +13,5 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
   await settingsRoutes(app, ctx);
   await debugRoutes(app, ctx);
   await projectRoutes(app, ctx);
+  await plannerRoutes(app, ctx);
 }

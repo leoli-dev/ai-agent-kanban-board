@@ -11,6 +11,7 @@ import { SecretStore } from './providers/secrets.js';
 import { ProviderRegistry } from './providers/registry.js';
 import { RunStore } from './runner/run-store.js';
 import { AgentRunner } from './runner/agent-runner.js';
+import { PlannerService } from './agents/planner.js';
 import type { AppContext } from './context.js';
 import { registerRoutes } from './routes/index.js';
 
@@ -26,6 +27,7 @@ async function main(): Promise<void> {
   const runStore = new RunStore(db, hub);
   const runner = new AgentRunner({ registry, runStore, settings, hub });
   runner.recoverOrphans();
+  const planner = new PlannerService({ db, hub, runner, settings, workspacesDir: WORKSPACES_DIR });
 
   const ctx: AppContext = {
     db,
@@ -36,6 +38,7 @@ async function main(): Promise<void> {
     registry,
     runStore,
     runner,
+    planner,
     dataDir: DATA_DIR,
     workspacesDir: WORKSPACES_DIR,
   };

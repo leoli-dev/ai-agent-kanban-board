@@ -6,6 +6,7 @@ import type { SecretStore } from './providers/secrets.js';
 import type { ProviderRegistry } from './providers/registry.js';
 import type { RunStore } from './runner/run-store.js';
 import type { AgentRunner } from './runner/agent-runner.js';
+import type { PlannerService } from './agents/planner.js';
 
 /**
  * Dependency container threaded through routes and services so tests can
@@ -21,6 +22,7 @@ export interface AppContext {
   registry: ProviderRegistry;
   runStore: RunStore;
   runner: AgentRunner;
+  planner: PlannerService;
   dataDir: string;
   workspacesDir: string;
 }

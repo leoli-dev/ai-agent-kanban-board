@@ -15,8 +15,20 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const script = JSON.parse(process.env.MOCK_SCRIPT || '{"events":[],"exitCode":0}');
+let script = JSON.parse(process.env.MOCK_SCRIPT || '{"events":[],"exitCode":0}');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Multi-phase mode: {"phases":[script...],"stateFile":"/path"} plays one
+// phase per invocation, tracked via a counter file (for multi-turn flows).
+if (script.phases) {
+  let n = 0;
+  try {
+    n = parseInt(fs.readFileSync(script.stateFile, 'utf8'), 10) || 0;
+  } catch {}
+  fs.mkdirSync(path.dirname(script.stateFile), { recursive: true });
+  fs.writeFileSync(script.stateFile, String(n + 1));
+  script = script.phases[Math.min(n, script.phases.length - 1)];
+}
 
 (async () => {
   for (const ev of script.events || []) {
