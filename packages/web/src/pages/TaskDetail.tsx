@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AgentRun, Project, Task } from '@akb/shared';
+import type { AgentRun, Project, ProviderProfile, Task } from '@akb/shared';
 import { api } from '../lib/api';
 import { useWsTopics } from '../lib/ws';
 import { useT } from '../lib/i18n';
@@ -30,6 +30,11 @@ export default function TaskDetail() {
     queryFn: () => api.get<Project>(`/api/projects/${task!.projectId}`),
     enabled: !!task,
   });
+  const { data: providers = [] } = useQuery({
+    queryKey: ['providers'],
+    queryFn: () => api.get<ProviderProfile[]>('/api/providers'),
+  });
+  const providerById = new Map(providers.map((p) => [p.id, p]));
 
   useWsTopics(task ? [`board:${task.projectId}`] : [], (msg) => {
     if (msg.type === 'task.updated' && msg.task.id === taskId) {
@@ -180,9 +185,15 @@ export default function TaskDetail() {
                       : 'border-ink-800 bg-ink-900 hover:border-ink-600'
                   }`}
                 >
-                  <span className="flex items-center gap-2">
+                  <span className="flex flex-wrap items-center gap-2">
                     <RunStatusDot status={r.status} />
                     <span className="text-ink-300">{t(`role.${r.role}`)}</span>
+                    <span className="rounded bg-ink-800 px-1.5 py-0.5 text-[10px] text-ink-300">
+                      {providerById.get(r.providerProfileId)?.name ?? r.providerProfileId.slice(0, 6)}
+                      {providerById.get(r.providerProfileId)?.modelLabel && (
+                        <span className="text-ink-500"> · {providerById.get(r.providerProfileId)!.modelLabel}</span>
+                      )}
+                    </span>
                     <span className="text-ink-500">{timeAgo(r.startedAt)}</span>
                     {r.failureClass && r.failureClass !== 'OK' && (
                       <span className="rounded bg-ink-800 px-1.5 py-0.5 text-[10px] text-accent-300">

@@ -112,6 +112,16 @@ export class RunStore {
       .map(toAgentRun);
   }
 
+  listRecent(limit = 100): AgentRun[] {
+    return this.db
+      .select()
+      .from(schema.agentRuns)
+      .orderBy(desc(schema.agentRuns.startedAt))
+      .limit(limit)
+      .all()
+      .map(toAgentRun);
+  }
+
   listRunning(): AgentRun[] {
     return this.db
       .select()

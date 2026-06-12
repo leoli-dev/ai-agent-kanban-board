@@ -3,6 +3,27 @@ export const en: Record<string, string> = {
   'nav.board': 'Board',
   'nav.projects': 'Projects',
   'nav.settings': 'Settings',
+  'nav.activity': 'Activity',
+
+  // activity ledger
+  'activity.title': 'Activity',
+  'activity.totalCost': 'total cost',
+  'activity.totalRuns': 'agent runs',
+  'activity.failedRuns': 'failed / killed',
+  'activity.byModel': 'By model',
+  'activity.recent': 'Run ledger — every attempt, including failures and fallbacks',
+  'activity.failedOnly': 'failures only',
+  'activity.empty': 'No runs yet.',
+  'activity.colTime': 'when',
+  'activity.colWhat': 'task / project',
+  'activity.colRole': 'role',
+  'activity.colModel': 'model',
+  'activity.colStatus': 'status',
+  'activity.colDuration': 'time',
+  'activity.colTokens': 'tokens',
+  'activity.colCost': 'cost',
+  'activity.colRuns': 'runs',
+  'activity.colFailed': 'failed',
   'app.name': 'Agent Kanban',
 
   // common

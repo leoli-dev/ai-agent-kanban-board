@@ -3,6 +3,27 @@ export const zh: Record<string, string> = {
   'nav.board': '看板',
   'nav.projects': '项目',
   'nav.settings': '设置',
+  'nav.activity': '活动',
+
+  // activity ledger
+  'activity.title': '活动',
+  'activity.totalCost': '累计花费',
+  'activity.totalRuns': '运行次数',
+  'activity.failedRuns': '失败 / 终止',
+  'activity.byModel': '按模型统计',
+  'activity.recent': '运行流水——每一次尝试,包括失败和降级',
+  'activity.failedOnly': '只看失败',
+  'activity.empty': '还没有运行记录。',
+  'activity.colTime': '时间',
+  'activity.colWhat': '任务 / 项目',
+  'activity.colRole': '角色',
+  'activity.colModel': '模型',
+  'activity.colStatus': '状态',
+  'activity.colDuration': '耗时',
+  'activity.colTokens': 'tokens',
+  'activity.colCost': '花费',
+  'activity.colRuns': '次数',
+  'activity.colFailed': '失败',
   'app.name': 'Agent Kanban',
 
   // common

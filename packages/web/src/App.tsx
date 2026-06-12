@@ -1,4 +1,5 @@
 import { NavLink, Route, Routes } from 'react-router-dom';
+import Activity from './pages/Activity';
 import Board from './pages/Board';
 import NewProject from './pages/NewProject';
 import ProjectDetail from './pages/ProjectDetail';
@@ -7,7 +8,7 @@ import TaskDetail from './pages/TaskDetail';
 import Projects from './pages/Projects';
 import Settings from './pages/Settings';
 import { NotificationBell } from './components/NotificationBell';
-import { IconBoard, IconBolt, IconFolder, IconGear } from './components/icons';
+import { IconBoard, IconBolt, IconFolder, IconGear, IconSpark } from './components/icons';
 import { useT } from './lib/i18n';
 import { useWsStatus } from './lib/ws';
 
@@ -18,6 +19,7 @@ export default function App() {
   const tabs = [
     { to: '/', label: t('nav.board'), icon: IconBoard },
     { to: '/projects', label: t('nav.projects'), icon: IconFolder },
+    { to: '/activity', label: t('nav.activity'), icon: IconSpark },
     { to: '/settings', label: t('nav.settings'), icon: IconGear },
   ];
 
@@ -83,6 +85,7 @@ export default function App() {
           <Route path="/projects/:projectId/board" element={<Board />} />
           <Route path="/projects/:projectId/planner" element={<PlannerChat />} />
           <Route path="/tasks/:taskId" element={<TaskDetail />} />
+          <Route path="/activity" element={<Activity />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
