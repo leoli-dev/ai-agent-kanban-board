@@ -156,6 +156,104 @@ function ProvidersSection() {
     queryClient.invalidateQueries({ queryKey: ['providers'] });
   }
 
+  const draftForm = draft && (
+    <div className="card mt-3 border-accent-500/30 p-4">
+      <h3 className="mb-3 text-sm font-semibold text-ink-100">
+        {draft.id ? t('settings.provider.edit') : t('settings.provider.new')}
+      </h3>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block text-xs text-ink-400">
+          {t('settings.provider.name')}
+          <input
+            value={draft.name}
+            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            placeholder="deepseek"
+            className="input-base mt-1"
+          />
+        </label>
+        <label className="block text-xs text-ink-400">
+          {t('settings.provider.engine')}
+          <select
+            value={draft.engine}
+            onChange={(e) => setDraft({ ...draft, engine: e.target.value as EngineId })}
+            className="input-base mt-1"
+          >
+            {ENGINES.map((e) => (
+              <option key={e} value={e}>
+                {e}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <p className="mt-1.5 text-[11px] leading-relaxed text-ink-500">
+        {t('settings.provider.engine.help')}
+      </p>
+
+      <DraftModelField draft={draft} setDraft={setDraft} />
+
+      <p className="mb-1 mt-4 text-xs font-medium text-ink-300">{t('settings.provider.env')}</p>
+      <p className="mb-2 text-[11px] leading-relaxed text-ink-500">
+        {t('settings.provider.env.help')}
+      </p>
+      {draft.env.map((row, i) => (
+        <div key={i} className="mb-1.5 flex gap-1.5">
+          <input
+            value={row.key}
+            onChange={(e) =>
+              setDraft({
+                ...draft,
+                env: draft.env.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)),
+              })
+            }
+            placeholder="ANTHROPIC_BASE_URL"
+            className="input-base w-2/5 font-mono text-xs"
+          />
+          <input
+            value={row.value}
+            onChange={(e) =>
+              setDraft({
+                ...draft,
+                env: draft.env.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)),
+              })
+            }
+            placeholder={'value or ${SECRET:KEY_NAME}'}
+            className="input-base flex-1 font-mono text-xs"
+          />
+          <button
+            onClick={() => setDraft({ ...draft, env: draft.env.filter((_, j) => j !== i) })}
+            className="px-2 text-ink-500 transition-colors hover:text-red-400"
+          >
+            <IconX width={13} height={13} />
+          </button>
+        </div>
+      ))}
+      <button
+        onClick={() => setDraft({ ...draft, env: [...draft.env, { key: '', value: '' }] })}
+        className="text-xs text-accent-300 hover:underline"
+      >
+        + {t('settings.provider.addVar')}
+      </button>
+
+      <div className="mt-4 flex gap-2">
+        <button
+          onClick={() => save.mutate(draft)}
+          disabled={!draft.name.trim() || save.isPending}
+          className="btn btn-primary px-4 py-2 text-sm"
+        >
+          {t('common.save')}
+        </button>
+        <button onClick={() => setDraft(null)} className="btn btn-ghost px-4 py-2 text-sm">
+          {t('common.cancel')}
+        </button>
+      </div>
+      {save.isError && (
+        <p className="mt-2 text-xs text-red-300">{String((save.error as Error).message)}</p>
+      )}
+    </div>
+  );
+
   return (
     <section>
       <div className="flex items-start justify-between gap-3">
@@ -266,6 +364,7 @@ function ProvidersSection() {
                 </p>
               )}
               {usageOpen[p.id] && <UsagePanel providerId={p.id} />}
+              {draft?.id === p.id && draftForm}
             </li>
           );
         })}
@@ -286,103 +385,7 @@ function ProvidersSection() {
         />
       )}
 
-      {draft && (
-        <div className="card mt-3 border-accent-500/30 p-4">
-          <h3 className="mb-3 text-sm font-semibold text-ink-100">
-            {draft.id ? t('settings.provider.edit') : t('settings.provider.new')}
-          </h3>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-xs text-ink-400">
-              {t('settings.provider.name')}
-              <input
-                value={draft.name}
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                placeholder="deepseek"
-                className="input-base mt-1"
-              />
-            </label>
-            <label className="block text-xs text-ink-400">
-              {t('settings.provider.engine')}
-              <select
-                value={draft.engine}
-                onChange={(e) => setDraft({ ...draft, engine: e.target.value as EngineId })}
-                className="input-base mt-1"
-              >
-                {ENGINES.map((e) => (
-                  <option key={e} value={e}>
-                    {e}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <p className="mt-1.5 text-[11px] leading-relaxed text-ink-500">
-            {t('settings.provider.engine.help')}
-          </p>
-
-          <DraftModelField draft={draft} setDraft={setDraft} />
-
-          <p className="mb-1 mt-4 text-xs font-medium text-ink-300">{t('settings.provider.env')}</p>
-          <p className="mb-2 text-[11px] leading-relaxed text-ink-500">
-            {t('settings.provider.env.help')}
-          </p>
-          {draft.env.map((row, i) => (
-            <div key={i} className="mb-1.5 flex gap-1.5">
-              <input
-                value={row.key}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    env: draft.env.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)),
-                  })
-                }
-                placeholder="ANTHROPIC_BASE_URL"
-                className="input-base w-2/5 font-mono text-xs"
-              />
-              <input
-                value={row.value}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    env: draft.env.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)),
-                  })
-                }
-                placeholder={'value or ${SECRET:KEY_NAME}'}
-                className="input-base flex-1 font-mono text-xs"
-              />
-              <button
-                onClick={() => setDraft({ ...draft, env: draft.env.filter((_, j) => j !== i) })}
-                className="px-2 text-ink-500 transition-colors hover:text-red-400"
-              >
-                <IconX width={13} height={13} />
-              </button>
-            </div>
-          ))}
-          <button
-            onClick={() => setDraft({ ...draft, env: [...draft.env, { key: '', value: '' }] })}
-            className="text-xs text-accent-300 hover:underline"
-          >
-            + {t('settings.provider.addVar')}
-          </button>
-
-          <div className="mt-4 flex gap-2">
-            <button
-              onClick={() => save.mutate(draft)}
-              disabled={!draft.name.trim() || save.isPending}
-              className="btn btn-primary px-4 py-2 text-sm"
-            >
-              {t('common.save')}
-            </button>
-            <button onClick={() => setDraft(null)} className="btn btn-ghost px-4 py-2 text-sm">
-              {t('common.cancel')}
-            </button>
-          </div>
-          {save.isError && (
-            <p className="mt-2 text-xs text-red-300">{String((save.error as Error).message)}</p>
-          )}
-        </div>
-      )}
+      {draft && !draft.id && draftForm}
     </section>
   );
 }

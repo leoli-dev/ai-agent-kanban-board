@@ -65,13 +65,14 @@ export const PROVIDER_TYPES: ProviderType[] = [
     emoji: '◎',
     engine: 'codex',
     secretName: 'OPENAI_API_KEY',
+    // Ids extracted from the codex binary's embedded catalog (5.5 era
+    // dropped the -codex suffix).
     models: [
       '(default)',
-      'gpt-5.5-codex',
-      'gpt-5.5-codex-pro',
-      'gpt-5.5-codex-mini',
       'gpt-5.5',
       'gpt-5.5-pro',
+      'gpt-5.4',
+      'gpt-5.4-mini',
       'gpt-5.3-codex',
       'gpt-5.2-codex',
       'gpt-5.2',
