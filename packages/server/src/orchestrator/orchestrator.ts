@@ -37,7 +37,17 @@ const ReviewVerdict = z.object({
   verdict: z.enum(['approve', 'changes_requested']),
   notes: z.string().default(''),
 });
-const TestVerdict = z.object({ pass: z.boolean(), summary: z.string().default('') });
+const TestVerdict = z.object({
+  pass: z.boolean(),
+  summary: z.string().default(''),
+  // Absolute (or cwd/artifacts-relative) paths to screenshots the tester saved.
+  evidence: z.array(z.string()).default([]),
+});
+
+// A visual/rendering criterion must be backed by a real screenshot. Kept narrow
+// to avoid flagging purely backend/CLI tasks.
+const VISUAL_CRITERION_RE =
+  /screenshot|截图|浏览器|\bbrowser\b|渲染|\brenders?\b|\brendered\b|\brendering\b|可视化|图表|\bchart\b|\bcanvas\b/i;
 
 interface OrchestratorDeps {
   db: Db;
@@ -440,7 +450,40 @@ export class Orchestrator {
       await this.bounce(project, task, `Tests failed: ${report.summary}`);
       return;
     }
+    // A claimed pass must be backed by evidence that actually exists — the
+    // tester cannot fake screenshot verification.
+    const evidenceProblem = this.checkTestEvidence(task, report.evidence ?? [], cwd, artifactsDir);
+    if (evidenceProblem) {
+      await this.bounce(project, task, `Test verification rejected: ${evidenceProblem}`);
+      return;
+    }
     updateTask(this.deps.db, this.deps.hub, task.id, { status: 'done' });
+  }
+
+  /**
+   * Guard against fabricated verification: every screenshot the tester cites
+   * must exist on disk, and a task with a visual/rendering criterion must cite
+   * at least one. Returns a problem string, or null if the evidence holds up.
+   */
+  private checkTestEvidence(
+    task: Task,
+    evidence: string[],
+    cwd: string,
+    artifactsDir: string,
+  ): string | null {
+    for (const p of evidence) {
+      const candidates = path.isAbsolute(p)
+        ? [p]
+        : [path.resolve(cwd, p), path.resolve(artifactsDir, p), path.join(artifactsDir, path.basename(p))];
+      if (!candidates.some((c) => fs.existsSync(c))) {
+        return `claimed screenshot evidence not found on disk: ${p}`;
+      }
+    }
+    const text = [task.title, task.description, ...task.acceptanceCriteria].join('\n');
+    if (VISUAL_CRITERION_RE.test(text) && evidence.length === 0) {
+      return 'this task has a visual/rendering criterion but the tester provided no screenshot evidence';
+    }
+    return null;
   }
 
   /** Shared reviewer/tester execution: run agent, read + validate verdict file. */

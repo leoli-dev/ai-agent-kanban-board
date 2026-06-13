@@ -30,7 +30,9 @@ interface Fixture {
   artifacts: string;
 }
 
-function makeFixture(taskSpecs: { id: string; deps: string[] }[]): Fixture {
+function makeFixture(
+  taskSpecs: { id: string; deps: string[]; description?: string; acceptanceCriteria?: string[] }[],
+): Fixture {
   const ctx = makeTestCtx();
   const repo = makeRepo(ctx.tmpDir);
   const projectId = nanoid(10);
@@ -58,7 +60,8 @@ function makeFixture(taskSpecs: { id: string; deps: string[] }[]): Fixture {
         projectId,
         planStepId: spec.id,
         title: `Task ${spec.id}`,
-        description: `Do ${spec.id}`,
+        description: spec.description ?? `Do ${spec.id}`,
+        acceptanceCriteriaJson: JSON.stringify(spec.acceptanceCriteria ?? []),
         status: 'backlog',
         orderIndex: i,
         createdAt: now,
@@ -237,6 +240,109 @@ describe('Orchestrator (money test)', () => {
     expect(taskStatus(f.ctx, 't1')).toBe('done');
     const roles = f.ctx.runStore.listByTask('t1').map((r) => r.role).sort();
     expect(roles).toEqual(['coder', 'reviewer', 'tester']);
+  }, 30_000);
+
+  it('rejects a tester pass for a visual task with no screenshot evidence', async () => {
+    const f = makeFixture([
+      {
+        id: 't1',
+        deps: [],
+        description: 'Build the dashboard page that renders a chart in the browser',
+        acceptanceCriteria: ['Chart renders (verified by screenshot; placeholder does not pass)'],
+      },
+    ]);
+    f.ctx.settings.update({ maxBounces: 0 }); // first rejection -> failed (no loop)
+    addMockProfile(f.ctx, 'coder', scripts.success('implemented'));
+    addMockProfile(
+      f.ctx,
+      'reviewer',
+      scripts.success('REVIEW_DONE', {
+        writeFiles: [
+          { path: path.join(f.artifacts, 'review-t1.json'), content: JSON.stringify({ verdict: 'approve', notes: 'ok' }) },
+        ],
+      }),
+    );
+    addMockProfile(
+      f.ctx,
+      'tester',
+      scripts.success('TEST_DONE', {
+        writeFiles: [
+          // Claims pass for a visual task but attaches no screenshot.
+          { path: path.join(f.artifacts, 'test-report-t1.json'), content: JSON.stringify({ pass: true, summary: 'looks fine', evidence: [] }) },
+        ],
+      }),
+    );
+
+    f.orchestrator.start();
+    await waitFor(() => taskStatus(f.ctx, 't1') === 'failed');
+    f.orchestrator.stop();
+    expect(taskStatus(f.ctx, 't1')).toBe('failed'); // guardrail blocked the unverified pass
+  }, 30_000);
+
+  it('rejects a tester pass that cites a screenshot file which does not exist', async () => {
+    const f = makeFixture([
+      { id: 't1', deps: [], description: 'Render the report page', acceptanceCriteria: ['page renders'] },
+    ]);
+    f.ctx.settings.update({ maxBounces: 0 });
+    addMockProfile(f.ctx, 'coder', scripts.success('implemented'));
+    addMockProfile(
+      f.ctx,
+      'reviewer',
+      scripts.success('REVIEW_DONE', {
+        writeFiles: [
+          { path: path.join(f.artifacts, 'review-t1.json'), content: JSON.stringify({ verdict: 'approve', notes: 'ok' }) },
+        ],
+      }),
+    );
+    addMockProfile(
+      f.ctx,
+      'tester',
+      scripts.success('TEST_DONE', {
+        writeFiles: [
+          {
+            path: path.join(f.artifacts, 'test-report-t1.json'),
+            content: JSON.stringify({ pass: true, summary: 'rendered', evidence: [path.join(f.artifacts, 'ghost.png')] }),
+          },
+        ],
+      }),
+    );
+
+    f.orchestrator.start();
+    await waitFor(() => taskStatus(f.ctx, 't1') === 'failed');
+    f.orchestrator.stop();
+    expect(taskStatus(f.ctx, 't1')).toBe('failed');
+  }, 30_000);
+
+  it('accepts a tester pass for a visual task backed by a real screenshot', async () => {
+    const f = makeFixture([
+      { id: 't1', deps: [], description: 'Render a chart', acceptanceCriteria: ['chart renders (screenshot)'] },
+    ]);
+    const shot = path.join(f.artifacts, 'shot-t1.png');
+    addMockProfile(f.ctx, 'coder', scripts.success('implemented'));
+    addMockProfile(
+      f.ctx,
+      'reviewer',
+      scripts.success('REVIEW_DONE', {
+        writeFiles: [
+          { path: path.join(f.artifacts, 'review-t1.json'), content: JSON.stringify({ verdict: 'approve', notes: 'ok' }) },
+        ],
+      }),
+    );
+    addMockProfile(
+      f.ctx,
+      'tester',
+      scripts.success('TEST_DONE', {
+        writeFiles: [
+          { path: shot, content: 'PNGDATA' }, // the screenshot the tester captured
+          { path: path.join(f.artifacts, 'test-report-t1.json'), content: JSON.stringify({ pass: true, summary: 'renders', evidence: [shot] }) },
+        ],
+      }),
+    );
+
+    f.orchestrator.start();
+    await waitFor(() => taskStatus(f.ctx, 't1') === 'done');
+    f.orchestrator.stop();
+    expect(taskStatus(f.ctx, 't1')).toBe('done');
   }, 30_000);
 
   it('bounces a task back to the coder when review requests changes', async () => {
