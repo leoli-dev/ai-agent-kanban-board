@@ -479,9 +479,14 @@ export class Orchestrator {
         return `claimed screenshot evidence not found on disk: ${p}`;
       }
     }
-    const text = [task.title, task.description, ...task.acceptanceCriteria].join('\n');
-    if (VISUAL_CRITERION_RE.test(text) && evidence.length === 0) {
-      return 'this task has a visual/rendering criterion but the tester provided no screenshot evidence';
+    // Only the acceptance CRITERIA decide whether a screenshot is required — the
+    // planner writes screenshot language into genuinely visual steps. Keying on
+    // the prose description would false-positive on scaffolding/backend tasks
+    // that merely mention rendering ("do NOT implement render logic", "the
+    // reporter will screenshot this later"), trapping them in a bounce loop.
+    const criteriaText = task.acceptanceCriteria.join('\n');
+    if (VISUAL_CRITERION_RE.test(criteriaText) && evidence.length === 0) {
+      return 'an acceptance criterion requires visual verification but the tester provided no screenshot evidence';
     }
     return null;
   }

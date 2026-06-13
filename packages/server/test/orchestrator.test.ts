@@ -345,6 +345,43 @@ describe('Orchestrator (money test)', () => {
     expect(taskStatus(f.ctx, 't1')).toBe('done');
   }, 30_000);
 
+  it('does not demand screenshots when only the description (not the criteria) mentions rendering', async () => {
+    const f = makeFixture([
+      {
+        id: 't1',
+        deps: [],
+        // Scaffolding task that mentions render/screenshot/chart in passing — the
+        // classic false-positive trap that should NOT require screenshot evidence.
+        description: 'Scaffold the project. Do NOT implement render logic; the reporter will screenshot the chart later.',
+        acceptanceCriteria: ['package.json is valid JSON with type=module', 'constants.js exports COMMON_PORTS'],
+      },
+    ]);
+    addMockProfile(f.ctx, 'coder', scripts.success('scaffolded'));
+    addMockProfile(
+      f.ctx,
+      'reviewer',
+      scripts.success('REVIEW_DONE', {
+        writeFiles: [
+          { path: path.join(f.artifacts, 'review-t1.json'), content: JSON.stringify({ verdict: 'approve', notes: 'ok' }) },
+        ],
+      }),
+    );
+    addMockProfile(
+      f.ctx,
+      'tester',
+      scripts.success('TEST_DONE', {
+        writeFiles: [
+          { path: path.join(f.artifacts, 'test-report-t1.json'), content: JSON.stringify({ pass: true, summary: 'files present', evidence: [] }) },
+        ],
+      }),
+    );
+
+    f.orchestrator.start();
+    await waitFor(() => taskStatus(f.ctx, 't1') === 'done');
+    f.orchestrator.stop();
+    expect(taskStatus(f.ctx, 't1')).toBe('done'); // not bounced by the visual guardrail
+  }, 30_000);
+
   it('bounces a task back to the coder when review requests changes', async () => {
     const f = makeFixture([{ id: 't1', deps: [] }]);
     f.ctx.settings.update({ autoAdvanceTest: false });
