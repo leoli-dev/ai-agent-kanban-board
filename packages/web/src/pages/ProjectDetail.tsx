@@ -122,31 +122,6 @@ export default function ProjectDetail() {
         </div>
       </div>
 
-      {project.status === 'done' && report?.md && (
-        <section className="card rise-in border-teal-500/30 p-4">
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-teal-300">
-            🎉 {t('project.report')}
-          </h2>
-          <Markdown>{report.md}</Markdown>
-        </section>
-      )}
-
-      <section className="card p-4">
-        <h2 className="mb-2 text-sm font-semibold text-ink-300">{t('project.idea')}</h2>
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-200">{project.prompt}</p>
-        {project.inputs.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {project.inputs.map((i) => (
-              <span key={i.id} className="rounded-md bg-ink-800 px-2 py-1 text-xs text-ink-400">
-                {i.kind === 'link'
-                  ? i.pathOrUrl
-                  : (i.originalName ?? i.pathOrUrl.split('/').pop())}
-              </span>
-            ))}
-          </div>
-        )}
-      </section>
-
       <div className="flex flex-wrap gap-2">
         {project.status === 'draft' && (
           <button
@@ -196,6 +171,32 @@ export default function ProjectDetail() {
           {t('common.delete')}
         </button>
       </div>
+
+
+      {project.status === 'done' && report?.md && (
+        <section className="card rise-in border-teal-500/30 p-4">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-teal-300">
+            🎉 {t('project.report')}
+          </h2>
+          <Markdown>{report.md}</Markdown>
+        </section>
+      )}
+
+      <section className="card p-4">
+        <h2 className="mb-2 text-sm font-semibold text-ink-300">{t('project.idea')}</h2>
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-200">{project.prompt}</p>
+        {project.inputs.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {project.inputs.map((i) => (
+              <span key={i.id} className="rounded-md bg-ink-800 px-2 py-1 text-xs text-ink-400">
+                {i.kind === 'link'
+                  ? i.pathOrUrl
+                  : (i.originalName ?? i.pathOrUrl.split('/').pop())}
+              </span>
+            ))}
+          </div>
+        )}
+      </section>
 
       {startPlanning.isError && (
         <p className="rounded-lg border border-red-900 bg-red-950/50 p-3 text-sm text-red-300">
