@@ -145,6 +145,10 @@ export const en: Record<string, string> = {
 
   // task detail
   'task.agentRunning': 'agent running',
+  'task.backToProject': 'Project',
+  'task.backToBoard': 'Board',
+  'task.showMore': 'Show more',
+  'task.showLess': 'Show less',
   'task.blockedLabel': 'Blocked: {reason}',
   'task.description': 'Description',
   'task.criteria': 'Acceptance criteria',

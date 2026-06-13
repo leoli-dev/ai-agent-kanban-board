@@ -19,6 +19,17 @@ const CreateProjectBody = z.object({
   links: z.array(z.string().url()).default([]),
 });
 
+/**
+ * A short project name from the prompt's first line. Splitting on whitespace
+ * fails for space-sparse text (e.g. Chinese), producing a name that is nearly
+ * the whole idea — so cap by characters instead.
+ */
+function deriveProjectName(prompt: string, maxLen = 60): string {
+  const firstLine = (prompt.split('\n').find((l) => l.trim()) ?? prompt).trim();
+  if (firstLine.length <= maxLen) return firstLine || 'Untitled project';
+  return firstLine.slice(0, maxLen - 1).trimEnd() + '…';
+}
+
 function classifyKind(filename: string, mime: string | undefined): InputKind {
   if (mime?.startsWith('image/')) return 'image';
   if (mime?.startsWith('video/')) return 'video';
@@ -90,7 +101,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     }
 
     const id = nanoid(10);
-    const name = body.name?.trim() || body.prompt.split(/\s+/).slice(0, 6).join(' ');
+    const name = body.name?.trim() || deriveProjectName(body.prompt);
 
     // New projects often start from nothing: create the folder and init git
     // (with a baseline commit) instead of rejecting.

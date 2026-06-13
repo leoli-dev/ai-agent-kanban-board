@@ -145,6 +145,10 @@ export const zh: Record<string, string> = {
 
   // task detail
   'task.agentRunning': '智能体运行中',
+  'task.backToProject': '项目主页',
+  'task.backToBoard': '看板',
+  'task.showMore': '展开',
+  'task.showLess': '收起',
   'task.blockedLabel': '受阻：{reason}',
   'task.description': '描述',
   'task.criteria': '验收标准',

@@ -9,7 +9,7 @@ import { useT } from '../lib/i18n';
 import { formatCost, taskStatusStyle, timeAgo } from '../lib/format';
 import { Loading, LoadError } from '../components/QueryState';
 import { LogStream } from '../components/LogStream';
-import { IconArrowLeft, IconRetry, IconStop, IconX } from '../components/icons';
+import { IconArrowLeft, IconBoard, IconRetry, IconStop, IconX } from '../components/icons';
 
 export default function TaskDetail() {
   const t = useT();
@@ -109,12 +109,17 @@ export default function TaskDetail() {
           )}
         </div>
         {project && (
-          <Link
-            to={`/projects/${project.id}`}
-            className="mt-1 flex w-fit items-center gap-1 text-xs text-accent-300 hover:underline"
-          >
-            <IconArrowLeft width={12} height={12} /> {project.name}
-          </Link>
+          <div className="mt-2 space-y-2">
+            <div className="flex flex-wrap gap-2">
+              <Link to={`/projects/${project.id}`} className="btn btn-ghost px-3 py-1.5 text-xs">
+                <IconArrowLeft width={13} height={13} /> {t('task.backToProject')}
+              </Link>
+              <Link to={`/projects/${project.id}/board`} className="btn btn-ghost px-3 py-1.5 text-xs">
+                <IconBoard width={13} height={13} /> {t('task.backToBoard')}
+              </Link>
+            </div>
+            <IdeaBox idea={project.prompt} />
+          </div>
         )}
         <div className="mt-2 flex flex-wrap gap-4 font-mono text-xs text-ink-400 tabular">
           <span>
@@ -323,6 +328,39 @@ function StageSummaries({
         ))}
       </div>
     </section>
+  );
+}
+
+/** The project's idea shown compactly, clamped to two lines with a toggle. */
+function IdeaBox({ idea }: { idea: string }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const text = idea.trim();
+  if (!text) return null;
+  const longish = text.length > 110 || text.includes('\n');
+
+  return (
+    <div className="rounded-lg border border-ink-800 bg-ink-900/60 px-3 py-2">
+      <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-ink-500">
+        {t('project.idea')}
+      </div>
+      <p
+        className={`whitespace-pre-wrap text-xs leading-relaxed text-ink-300 ${
+          longish && !open ? 'line-clamp-2' : ''
+        }`}
+      >
+        {text}
+      </p>
+      {longish && (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="mt-1 text-[11px] font-medium text-accent-300 hover:underline"
+        >
+          {open ? t('task.showLess') : t('task.showMore')}
+        </button>
+      )}
+    </div>
   );
 }
 
