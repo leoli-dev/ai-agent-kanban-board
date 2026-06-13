@@ -27,6 +27,12 @@ export interface RunRequest {
   resumeSessionId?: string;
   /** Pin a specific profile instead of role-based selection. */
   profileId?: string;
+  /**
+   * Escalation floor into the role's priority ladder: skip models below this
+   * priority and start from a stronger one. Used to retry a repeatedly-rejected
+   * task on a more capable model. Default 0 = start from the top (cheapest).
+   */
+  minPriority?: number;
   images?: string[];
   /** Test/role overrides for watchdog timers. */
   timeouts?: { stuckMs?: number; wallClockMs?: number };
@@ -87,7 +93,7 @@ export class AgentRunner extends EventEmitter {
 
     let profile = req.profileId
       ? this.deps.registry.get(req.profileId)
-      : this.deps.registry.pickForRole(req.role);
+      : this.deps.registry.pickForRole(req.role, [], req.minPriority ?? 0);
 
     while (profile) {
       const prompt =
@@ -132,7 +138,9 @@ export class AgentRunner extends EventEmitter {
       triedProfileIds.push(profile.id);
       resumeSessionId = undefined; // sessions don't survive provider switches
       crashRetried = false;
-      profile = req.profileId ? null : this.deps.registry.pickForRole(req.role, triedProfileIds);
+      profile = req.profileId
+        ? null
+        : this.deps.registry.pickForRole(req.role, triedProfileIds, req.minPriority ?? 0);
     }
 
     const finalRun = attempts[attempts.length - 1] ?? null;

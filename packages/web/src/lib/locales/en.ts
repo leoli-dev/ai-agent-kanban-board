@@ -261,7 +261,7 @@ export const en: Record<string, string> = {
 
   'settings.roles': 'Role → model priority',
   'settings.roles.help':
-    'Each agent role tries its models top to bottom. Out of quota or rate-limited → that model cools down for 15 minutes and the next one takes over mid-task. Auth failure → it is disabled until you re-enable it. Order = preference: put your best/cheapest first, a local model last as the safety net.',
+    'Order each role as a low→high ladder: cheapest/weakest model first, strongest last. The first model is tried first; if its work keeps getting rejected (review/test bounces), the task automatically escalates one step down to the next, stronger model — and so on. Separately, if a model is out of quota or rate-limited it cools down 15 min and the next takes over mid-task; an auth failure disables it until you re-enable it.',
   'settings.roles.none': 'no models assigned',
   'settings.roles.add': 'add model…',
 

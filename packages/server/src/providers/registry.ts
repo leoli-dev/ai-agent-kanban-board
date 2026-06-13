@@ -115,19 +115,33 @@ export class ProviderRegistry {
   }
 
   /**
-   * Fallback selection: first enabled, non-cooled-down profile for the role,
-   * by priority, excluding profiles already tried in this run.
+   * Provider selection for a role.
+   *
+   * The role's ordered list doubles as an escalation ladder: priority 0 is the
+   * cheapest/preferred model, later entries are stronger. `minPriority` raises
+   * the floor — used to escalate a task to a more capable model after its work
+   * keeps getting rejected. Within that floor we still pick by priority and
+   * skip disabled / cooled-down / already-tried profiles (availability fallback).
+   * If nothing qualifies at or above the floor (we've escalated past the end of
+   * the list), we fall back to the strongest available profile (highest
+   * priority number) so the task still runs on the best model configured.
    */
-  pickForRole(role: AgentRole, excludeIds: string[] = []): ProviderProfile | null {
+  pickForRole(
+    role: AgentRole,
+    excludeIds: string[] = [],
+    minPriority = 0,
+  ): ProviderProfile | null {
     const now = Date.now();
-    for (const assignment of this.assignments(role)) {
-      if (excludeIds.includes(assignment.providerProfileId)) continue;
-      const profile = this.get(assignment.providerProfileId);
-      if (!profile || !profile.enabled) continue;
-      if (profile.cooldownUntil && profile.cooldownUntil > now) continue;
-      return profile;
-    }
-    return null;
+    const available = this.assignments(role).filter((a) => {
+      if (excludeIds.includes(a.providerProfileId)) return false;
+      const profile = this.get(a.providerProfileId);
+      if (!profile || !profile.enabled) return false;
+      if (profile.cooldownUntil && profile.cooldownUntil > now) return false;
+      return true;
+    });
+    if (available.length === 0) return null;
+    const chosen = available.find((a) => a.priority >= minPriority) ?? available[available.length - 1]!;
+    return this.get(chosen.providerProfileId);
   }
 
   markOk(id: string): void {

@@ -17,6 +17,7 @@ import type { WsHub } from '../ws/hub.js';
 import {
   commitAll,
   deleteBranch,
+  discardUncommitted,
   ensureNotOnBranch,
   ensureWorktree,
   mergeBaseLeaveConflicts,
@@ -324,6 +325,10 @@ export class Orchestrator {
 
       updateTask(this.deps.db, this.deps.hub, task.id, { status: 'wip', blockedReason: null });
 
+      // Escalate up the coder ladder once per prior rejection (review/test
+      // bounce) or hard-failure retry: a weak model that can't satisfy the task
+      // hands off to a stronger one configured later in the role's list.
+      const escalation = task.bounceCount + task.retryCount;
       const outcome = await this.deps.runner.run({
         role: 'coder',
         prompt: this.buildCoderPrompt(project, task, ws.artifacts, prep),
@@ -333,6 +338,7 @@ export class Orchestrator {
         projectId: project.id,
         addDirs: [ws.root],
         systemAppend: CODER_CONTRACT,
+        minPriority: escalation,
         onStuck: (info) => this.diagnoseStuckRun(project, task, info.logTail, ws.artifacts),
       });
 
@@ -556,6 +562,10 @@ ${opts.task.acceptanceCriteria.map((c) => `- ${c}`).join('\n') || '- (none)'}
       return opts.schema.parse(JSON.parse(fs.readFileSync(opts.filePath, 'utf8')));
     } catch {
       return null;
+    } finally {
+      // Reviewers/testers must not commit; scrub any scratch/debug files they
+      // left in the worktree so they don't get swept into the next coder commit.
+      await discardUncommitted(opts.cwd).catch(() => {});
     }
   }
 

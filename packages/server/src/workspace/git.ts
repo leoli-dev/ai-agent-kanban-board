@@ -176,6 +176,17 @@ export async function mergeBaseLeaveConflicts(
   }
 }
 
+/**
+ * Reset a worktree to its last commit, dropping every uncommitted change and
+ * untracked file. Used after a reviewer/tester run (which must never commit) so
+ * scratch/debug files they leave behind don't pollute the next coder's commit.
+ */
+export async function discardUncommitted(dir: string): Promise<void> {
+  const git = simpleGit(dir);
+  await git.raw(['reset', '--hard', 'HEAD']).catch(() => {});
+  await git.raw(['clean', '-fd']).catch(() => {});
+}
+
 /** Commit everything in the working tree (used as a safety net after agent runs). */
 export async function commitAll(repoPath: string, message: string): Promise<boolean> {
   const git = simpleGit(repoPath);
