@@ -1,56 +1,126 @@
-# Agent Kanban Board
+# AI Agent Kanban Board
 
-Self-hosted multi-agent AI coding workflow platform. Turn one idea (prompt + files/images/PDFs/links) into an executed coding project: a planner agent refines it and asks clarifying questions, you approve the plan, and an orchestrator drives coder/reviewer/tester sub-agents across a kanban board — with **multi-provider AI fallback** at its core.
+Self-hosted multi-agent coding workflow for turning a product idea into an executed local code project. Create a project from a prompt, links, and uploaded files; let a planner agent ask follow-up questions and produce a plan; approve it; then track coder, reviewer, tester, and debugger agents across a kanban board.
 
-## How it works
+The app is built for a single developer running agents on their own machine. It keeps model credentials local, streams every run into the UI, and can fail over across multiple AI providers when a model hits quota or authentication trouble.
 
+## What it does
+
+```text
+idea + files + links
+  -> planner agent Q&A
+  -> plan.md / plan.json
+  -> human approval
+  -> kanban task DAG
+  -> coder / reviewer / tester / debugger agents
+  -> final completion report
 ```
-idea + resources ──> planner agent (Q&A loop) ──> plan.md / plan.json ──> YOU approve
-                                                                            │
-   Backlog ─ WIP ─ To Review ─ To Test ─ Done   <── kanban tasks (topo-sorted DAG)
-      │
- orchestrator loop: picks ready tasks ──> coder agent (commits to agent/<project> branch)
-      ├─ reviewer agent: approve / changes_requested (bounce back, bounded)
-      ├─ tester agent: runs the tests, pass / fail (bounce back, bounded)
-      ├─ stuck watchdog ──> debugger agent diagnoses ──> kill ──> retry with diagnosis
-      └─ all done ──> notification (in-app + macOS banner + email)
-```
 
-**Providers**: every agent role (planner, coder, reviewer, tester, debugger, …) has an ordered provider list. A provider = an engine (`claude-code`, `codex`) + env vars (e.g. `ANTHROPIC_BASE_URL` pointing at DeepSeek/MiniMax/ollama/omlx Anthropic-compatible endpoints). Out of quota → automatic cooldown + fallback to the next provider. Auth failure → disabled + notification.
+- Projects dashboard with status, progress, cost-to-date, and follow-up actions.
+- Planner chat for clarifying questions, plan review, requested changes, and approval.
+- Per-project kanban board with Backlog, In progress, To review, To test, Done, Failed, and Blocked states.
+- Task pages with acceptance criteria, live logs, run history, retry/kill controls, and stage summaries.
+- Multi-provider model routing per role: planner, task creator, coder, reviewer, tester, debugger, and orchestrator test role.
+- Provider presets for Claude, Codex, DeepSeek, Kimi, Qwen, GLM, MiniMax, OpenRouter, local Anthropic-compatible servers, and custom env-based profiles.
+- Automatic quota cooldown and fallback to the next configured model; auth failures disable the provider and raise a notification.
+- Parallel task execution through isolated git worktrees and task branches, merged back into the project integration branch when tasks finish.
+- Activity ledger with run duration, status, model, token, and cost information where available.
+- Notifications in-app, via macOS banners, and optionally through SMTP email.
 
 ## Requirements
 
-- Node ≥ 20, pnpm (`npm i -g pnpm`)
-- Claude Code CLI (`claude`) and/or Codex CLI (`codex`) installed
-- macOS for banner notifications (optional)
+- Node.js 20 or newer
+- pnpm
+- Git
+- One or more supported agent CLIs or API keys:
+  - Claude Code CLI (`claude`) for `claude-code` engine profiles
+  - OpenAI Codex CLI (`codex`) for `codex` engine profiles
+  - Anthropic-compatible API endpoint for DeepSeek, Kimi, Qwen, GLM, MiniMax, OpenRouter, local servers, or custom profiles
+- macOS is optional, only needed for native banner notifications.
 
-## Run
+## Run locally
 
 ```bash
 pnpm install
-pnpm dev        # dev: server :5713 + web :5173 (proxied)
-# or production-ish:
-pnpm build && pnpm start   # everything on http://<your-ip>:5713 (phone-friendly)
+pnpm dev
 ```
 
-## Setup (in the web UI → Settings)
+Development mode starts:
 
-1. **Providers** — add profiles, e.g.:
-   - `anthropic`: engine `claude-code`, env `ANTHROPIC_API_KEY=${SECRET:ANTHROPIC_API_KEY}`
-   - `deepseek`: engine `claude-code`, env `ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`, `ANTHROPIC_AUTH_TOKEN=${SECRET:DEEPSEEK_API_KEY}`, `ANTHROPIC_MODEL=deepseek-v4-pro[1m]`, …
-   - `omlx-local`: engine `claude-code`, env `ANTHROPIC_BASE_URL=http://127.0.0.1:8000`, …
-   - `codex`: engine `codex`, model label e.g. `gpt-5.3-codex`
-2. **Secrets** — store API keys (kept in `data/secrets.json`, chmod 600, never in the DB; falls back to your shell env).
-3. **Roles** — order providers per role, e.g. coder: `codex → deepseek → omlx-local`. Use the **Test** button on each provider.
-4. Create a project: prompt + target local git repo + optional files/links → **Start planning**.
+- API server: `http://localhost:5713`
+- Vite web app: `http://localhost:5173`
 
-Agents work on a dedicated `agent/<project>` branch of your repo; you merge when satisfied. Auto review/test stages can be toggled off to handle those columns manually (drag cards on the board — manual moves always win).
+For a production-style local run:
 
-## Notes
+```bash
+pnpm build
+pnpm start
+```
 
-- All runs are logged as raw NDJSON under `data/workspaces/<project>/logs/`; live streaming in the task view.
-- The `mock` engine replays scripted streams — used by the test suite (`pnpm test`, 21 integration tests) so the whole pipeline is testable without spending tokens.
-- Headless agents run with permissions skipped (`--dangerously-skip-permissions` / codex sandbox) — single-user tool, dedicated branch, local machine. Don't point it at repos with uncommitted work (the orchestrator refuses to start tasks on a dirty tree).
+`pnpm start` serves the built web app and API from `http://<your-ip>:5713`, which is useful from another device on the same network.
+
+## Configuration
+
+Open Settings in the web UI after starting the app.
+
+1. Add model profiles under Models. Use the guided presets when possible, or create a custom profile with raw environment variables.
+2. Store API keys under Secrets. They are written to `data/secrets.json` with local file permissions and are not stored in the database.
+3. Assign ordered model priorities per role. Each role tries models top to bottom.
+4. Tune pipeline settings: stuck threshold, wall-clock limit, retry count, review bounce limit, parallel task count, planner Q&A rounds, auto review, and auto test.
+5. Enable notifications if you want macOS banners or SMTP email.
+
+Secrets can be referenced in provider env vars with `${SECRET:NAME}`. If a secret is not found in `data/secrets.json`, the server falls back to the process environment.
+
+Useful environment variables:
+
+```bash
+AKB_PORT=5713          # API / production web port
+AKB_HOST=0.0.0.0       # bind address
+AKB_DATA_DIR=./data    # database, secrets, uploads, workspaces, logs
+```
+
+## Project workflow
+
+1. Create a project with an idea, a target local repo path, optional reference links, and optional uploaded files.
+2. Start planning. The planner may ask questions before producing `plan.md` and structured tasks.
+3. Review the plan. Approve it to start, or send requested changes back to the planner.
+4. Agents work from a dedicated project branch named like `agent/<project>-<id>`.
+5. Independent tasks run in isolated worktrees on task branches. Completed tasks are merged into the project branch automatically.
+6. Review and test stages can run automatically, or you can turn them off and move cards manually.
+7. When every task is done, the app generates a completion report with deliverable location, how to run it, and per-task accounting.
+
+Your normal checkout is kept separate from the task worktrees. The orchestrator refuses to start work on a dirty target repo so it does not overwrite local changes.
+
+## Data and logs
+
+Runtime data lives under `data/` by default:
+
+- `data/app.db` - SQLite database
+- `data/secrets.json` - local secret vault
+- `data/workspaces/<project>/inputs/` - uploaded project resources
+- `data/workspaces/<project>/plan/` - generated plan files
+- `data/workspaces/<project>/logs/` - raw agent run logs
+- `data/workspaces/<project>/artifacts/` - project artifacts and reports
+- `data/workspaces/<project>/worktrees/` - integration and task worktrees
+
+The `data/` directory is ignored by git.
+
+## Development
+
+```bash
+pnpm test
+pnpm typecheck
+pnpm build
+```
+
+The server test suite uses the `mock` engine so pipeline behavior can be tested without spending model tokens.
+
+## Safety notes
+
+- Headless coding agents run with broad local permissions appropriate for a single-user development tool.
+- Use this on repos you control and keep important work committed before starting a project.
+- Providers can spend real API credits. Set conservative retry, wall-clock, and concurrency limits while testing.
+- This app stores secrets locally, not in the hosted GitHub repo.
 
 ## License
 
