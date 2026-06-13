@@ -8,6 +8,7 @@ import type { ProviderRegistry } from '../providers/registry.js';
 import type { RunStore } from '../runner/run-store.js';
 import type { AgentRunner } from '../runner/agent-runner.js';
 import { workspacePaths } from '../workspace/workspace.js';
+import { addDetachedWorktree, removeWorktree } from '../workspace/git.js';
 
 const HOW_TO_RUN_PLACEHOLDER =
   '_⏳ 智能体正在阅读成品并撰写运行指南… / An agent is reading the result and writing run instructions…_';
@@ -134,9 +135,25 @@ ${taskBlocks}
         : null;
     if (!role) return;
 
+    // Read the finished code from a DETACHED worktree at the branch tip: this
+    // lets the agent inspect the result without occupying the branch, so the
+    // user can still `git checkout` it (the integration worktree is gone by now).
     const ws = workspacePaths(this.deps.workspacesDir, project.id);
-    const integrationDir = path.join(ws.root, 'worktrees', '_integration');
-    const cwd = fs.existsSync(integrationDir) ? integrationDir : project.targetRepoPath;
+    const reviewDir = path.join(ws.root, 'worktrees', '_report');
+    let cwd = project.targetRepoPath;
+    let tempWorktree = false;
+    if (project.gitBranch) {
+      try {
+        await addDetachedWorktree(project.targetRepoPath, reviewDir, project.gitBranch);
+        cwd = reviewDir;
+        tempWorktree = true;
+      } catch {
+        // Branch may still be checked out elsewhere (e.g. an older project whose
+        // integration worktree lingers); fall back to reading it there.
+        const integrationDir = path.join(ws.root, 'worktrees', '_integration');
+        if (fs.existsSync(integrationDir)) cwd = integrationDir;
+      }
+    }
 
     try {
       const outcome = await this.deps.runner.run({
@@ -164,6 +181,10 @@ Maximum 40 lines. No preamble, no code changes, do not commit anything.`,
       fs.writeFileSync(file, md);
     } catch {
       /* report stays with placeholder; regenerated on next request */
+    } finally {
+      if (tempWorktree) {
+        await removeWorktree(project.targetRepoPath, reviewDir).catch(() => {});
+      }
     }
   }
 

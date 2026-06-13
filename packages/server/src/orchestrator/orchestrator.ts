@@ -636,18 +636,33 @@ Begin.`;
     );
     this.deps.hub.publish('global', { type: 'project.updated', project: updated });
     this.deps.hub.publish(`board:${project.id}`, { type: 'project.updated', project: updated });
-    // Build the final report (agent enrichment runs in the background).
-    try {
-      this.deps.reports.ensure(updated);
-    } catch {
-      /* report regenerates on first view */
-    }
+    // Free the agent branch and build the report (both run in the background;
+    // the status flip above already prevents this project from being re-evaluated).
+    void this.finalizeProject(updated);
     void this.deps.notifier.notify(
       'project_done',
       `🎉 项目完成: ${project.name.slice(0, 60)}`,
       `成果在 ${project.targetRepoPath} 的 ${project.gitBranch} 分支。打开项目页查看完成报告(做了什么/如何运行)。`,
       project.id,
     );
+  }
+
+  /**
+   * Post-completion housekeeping: the integration worktree held the agent
+   * branch checked out for merging during the run. Now that the project is
+   * done, remove it so the branch is free for the user to `git checkout`
+   * (the value the completion report documents). Then build the report.
+   */
+  private async finalizeProject(project: Project): Promise<void> {
+    const integration = this.integrationDir(project);
+    if (fs.existsSync(integration)) {
+      await removeWorktree(project.targetRepoPath, integration).catch(() => {});
+    }
+    try {
+      this.deps.reports.ensure(project);
+    } catch {
+      /* report regenerates on first view */
+    }
   }
 }
 

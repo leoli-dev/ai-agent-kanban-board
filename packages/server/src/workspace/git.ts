@@ -81,6 +81,23 @@ export async function ensureWorktree(
   }
 }
 
+/**
+ * Add a throwaway worktree checked out at `ref` in DETACHED HEAD. Because it
+ * does not occupy the branch, the branch stays free for the user (or another
+ * worktree) to check out while an agent reads the files here.
+ */
+export async function addDetachedWorktree(
+  repoPath: string,
+  dir: string,
+  ref: string,
+): Promise<void> {
+  if (fs.existsSync(path.join(dir, '.git'))) return;
+  fs.mkdirSync(path.dirname(dir), { recursive: true });
+  const git = simpleGit(repoPath);
+  await git.raw(['worktree', 'prune']).catch(() => {});
+  await git.raw(['worktree', 'add', '--detach', dir, ref]);
+}
+
 export async function removeWorktree(repoPath: string, dir: string): Promise<void> {
   const git = simpleGit(repoPath);
   try {
