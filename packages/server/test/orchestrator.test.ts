@@ -382,6 +382,27 @@ describe('Orchestrator (money test)', () => {
     expect(taskStatus(f.ctx, 't1')).toBe('done'); // not bounced by the visual guardrail
   }, 30_000);
 
+  it('bounces (does not loop) when the tester produces no verdict', async () => {
+    const f = makeFixture([{ id: 't1', deps: [] }]);
+    f.ctx.settings.update({ maxBounces: 0 }); // first bounce -> failed, proving no infinite loop
+    addMockProfile(f.ctx, 'coder', scripts.success('implemented'));
+    addMockProfile(
+      f.ctx,
+      'reviewer',
+      scripts.success('REVIEW_DONE', {
+        writeFiles: [
+          { path: path.join(f.artifacts, 'review-t1.json'), content: JSON.stringify({ verdict: 'approve', notes: 'ok' }) },
+        ],
+      }),
+    );
+    addMockProfile(f.ctx, 'tester', scripts.crash()); // crashes without writing a verdict file
+
+    f.orchestrator.start();
+    await waitFor(() => taskStatus(f.ctx, 't1') === 'failed');
+    f.orchestrator.stop();
+    expect(taskStatus(f.ctx, 't1')).toBe('failed');
+  }, 30_000);
+
   it('bounces a task back to the coder when review requests changes', async () => {
     const f = makeFixture([{ id: 't1', deps: [] }]);
     f.ctx.settings.update({ autoAdvanceTest: false });

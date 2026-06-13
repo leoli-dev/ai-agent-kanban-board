@@ -413,7 +413,17 @@ export class Orchestrator {
       schema: ReviewVerdict,
       promptIntro: `Review the work for this task. Write your verdict JSON to: ${reviewPath}`,
     });
-    if (!review) return; // stage agent failed; leave for manual review
+    // No verdict (reviewer crashed or timed out): bounce rather than leaving it
+    // parked to be relaunched on a loop. Falls through to maxBounces -> failed.
+    if (!review) {
+      await this.bounce(
+        project,
+        task,
+        'Automated review did not complete (the reviewer timed out or crashed). ' +
+          'Make sure the change is small, self-contained, and the repo is in a clean, reviewable state.',
+      );
+      return;
+    }
 
     if (review.verdict === 'changes_requested') {
       await this.bounce(project, task, `Review requested changes: ${review.notes}`);
@@ -444,7 +454,19 @@ export class Orchestrator {
       schema: TestVerdict,
       promptIntro: `Verify this task's implementation works. Write your report JSON to: ${reportPath}`,
     });
-    if (!report) return;
+    // No verdict (the tester crashed or timed out) — don't leave it parked to
+    // be relaunched forever. Treat it as a failed verification and bounce to
+    // the coder; a timeout usually means the page/CLI hangs or errors badly.
+    if (!report) {
+      await this.bounce(
+        project,
+        task,
+        'Automated verification did not complete (the tester timed out or crashed). ' +
+          'This usually means the result hangs, crashes, or has a runtime/render error that ' +
+          'prevents it from working — re-check it runs cleanly (inspect the browser console / run output).',
+      );
+      return;
+    }
 
     if (!report.pass) {
       await this.bounce(project, task, `Tests failed: ${report.summary}`);
@@ -525,6 +547,10 @@ ${opts.task.acceptanceCriteria.map((c) => `- ${c}`).join('\n') || '- (none)'}
         projectId: opts.project.id,
         addDirs: [ws.root],
         systemAppend: opts.contract,
+        // A verdict (review/test) should be quick. Cap it well under the
+        // project wall clock so a rabbit-holing agent fails fast instead of
+        // burning an hour and producing no verdict.
+        timeouts: { stuckMs: 5 * 60_000, wallClockMs: 20 * 60_000 },
       });
       if (!outcome.ok) return null;
       return opts.schema.parse(JSON.parse(fs.readFileSync(opts.filePath, 'utf8')));
