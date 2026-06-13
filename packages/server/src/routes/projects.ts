@@ -259,10 +259,17 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
       .from(schema.projectInputs)
       .where(eq(schema.projectInputs.id, inputId))
       .get();
-    if (!row || row.kind === 'link' || !fs.existsSync(row.pathOrUrl)) {
+    if (!row || row.kind === 'link') {
       return reply.code(404).send({ error: 'input not found' });
     }
+    // Stored paths are absolute; if the workspace dir moved (e.g. the repo was
+    // renamed) fall back to the file's current location by basename.
+    let filePath = row.pathOrUrl;
+    if (!fs.existsSync(filePath)) {
+      filePath = path.join(workspacePaths(ctx.workspacesDir, row.projectId).inputs, path.basename(row.pathOrUrl));
+      if (!fs.existsSync(filePath)) return reply.code(404).send({ error: 'input not found' });
+    }
     if (row.mime) reply.type(row.mime);
-    return reply.send(fs.createReadStream(row.pathOrUrl));
+    return reply.send(fs.createReadStream(filePath));
   });
 }

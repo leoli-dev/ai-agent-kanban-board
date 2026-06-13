@@ -1,5 +1,5 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AgentRun, PlanDocument, Project, ProjectInput, Task } from '@akb/shared';
 import { api } from '../lib/api';
@@ -173,29 +173,10 @@ export default function ProjectDetail() {
       </div>
 
 
-      {project.status === 'done' && report?.md && (
-        <section className="card rise-in border-teal-500/30 p-4">
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-teal-300">
-            🎉 {t('project.report')}
-          </h2>
-          <Markdown>{report.md}</Markdown>
-        </section>
-      )}
-
       <section className="card p-4">
         <h2 className="mb-2 text-sm font-semibold text-ink-300">{t('project.idea')}</h2>
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-200">{project.prompt}</p>
-        {project.inputs.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {project.inputs.map((i) => (
-              <span key={i.id} className="rounded-md bg-ink-800 px-2 py-1 text-xs text-ink-400">
-                {i.kind === 'link'
-                  ? i.pathOrUrl
-                  : (i.originalName ?? i.pathOrUrl.split('/').pop())}
-              </span>
-            ))}
-          </div>
-        )}
+        <ProjectInputs inputs={project.inputs} t={t} />
       </section>
 
       {startPlanning.isError && (
@@ -205,10 +186,11 @@ export default function ProjectDetail() {
       )}
 
       {planMd?.md && (
-        <section className="card p-4">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-ink-300">{t('project.plan')}</h2>
-            {project.status === 'awaiting_approval' && (
+        <CollapsibleCard
+          title={t('project.plan')}
+          defaultOpen={project.status === 'awaiting_approval'}
+          action={
+            project.status === 'awaiting_approval' && (
               <div className="flex gap-2">
                 <button
                   onClick={() => approve.mutate()}
@@ -224,8 +206,9 @@ export default function ProjectDetail() {
                   {t('project.requestChanges')}
                 </button>
               </div>
-            )}
-          </div>
+            )
+          }
+        >
           {showReject && (
             <div className="mb-3 space-y-2">
               <textarea
@@ -245,7 +228,7 @@ export default function ProjectDetail() {
             </div>
           )}
           <Markdown>{planMd.md}</Markdown>
-        </section>
+        </CollapsibleCard>
       )}
 
       {tasks.length > 0 && (
@@ -269,6 +252,170 @@ export default function ProjectDetail() {
             ))}
           </ul>
         </section>
+      )}
+
+      {project.status === 'done' && report?.md && (
+        <CollapsibleCard
+          title={<>🎉 {t('project.report')}</>}
+          defaultOpen
+          className="rise-in border-teal-500/30"
+          titleClassName="text-teal-300"
+        >
+          <Markdown>{report.md}</Markdown>
+        </CollapsibleCard>
+      )}
+    </div>
+  );
+}
+
+/** Card with a collapsible body toggled by clicking its header. */
+function CollapsibleCard({
+  title,
+  children,
+  action,
+  defaultOpen = true,
+  className = '',
+  titleClassName = 'text-ink-300',
+}: {
+  title: ReactNode;
+  children: ReactNode;
+  action?: ReactNode;
+  defaultOpen?: boolean;
+  className?: string;
+  titleClassName?: string;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className={`card p-4 ${className}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          className="flex items-center gap-1.5 text-left"
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={`shrink-0 text-ink-500 transition-transform ${open ? 'rotate-90' : ''}`}
+          >
+            <path d="M4 2l4 4-4 4" />
+          </svg>
+          <h2 className={`text-sm font-semibold ${titleClassName}`}>{title}</h2>
+        </button>
+        {action}
+      </div>
+      {open && <div className="mt-3">{children}</div>}
+    </section>
+  );
+}
+
+/** Reference links and uploaded resource files captured at project creation. */
+function ProjectInputs({
+  inputs,
+  t,
+}: {
+  inputs: ProjectInput[];
+  t: (key: string, vars?: Record<string, string | number>) => string;
+}) {
+  const [lightbox, setLightbox] = useState<{ src: string; name: string } | null>(null);
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setLightbox(null);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [lightbox]);
+  if (inputs.length === 0) return null;
+  const links = inputs.filter((i) => i.kind === 'link');
+  const files = inputs.filter((i) => i.kind !== 'link');
+
+  return (
+    <div className="mt-4 space-y-3 border-t border-ink-800 pt-3">
+      {links.length > 0 && (
+        <div>
+          <h3 className="mb-1.5 text-xs font-medium text-ink-400">{t('new.links')}</h3>
+          <ul className="space-y-1">
+            {links.map((i) => (
+              <li key={i.id}>
+                <a
+                  href={i.pathOrUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="break-all text-xs text-amber-400 hover:underline"
+                >
+                  {i.pathOrUrl}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {files.length > 0 && (
+        <div>
+          <h3 className="mb-1.5 text-xs font-medium text-ink-400">{t('new.files')}</h3>
+          <div className="flex flex-wrap gap-2">
+            {files.map((i) => {
+              const name = i.originalName ?? i.pathOrUrl.split('/').pop() ?? 'file';
+              const href = `/api/inputs/${i.id}/file`;
+              return i.kind === 'image' ? (
+                <button
+                  key={i.id}
+                  type="button"
+                  onClick={() => setLightbox({ src: href, name })}
+                  title={name}
+                  className="rounded-md focus:outline-none focus:ring-2 focus:ring-amber-400"
+                >
+                  <img
+                    src={href}
+                    alt={name}
+                    className="h-20 w-20 cursor-zoom-in rounded-md border border-ink-800 object-cover transition-opacity hover:opacity-80"
+                  />
+                </button>
+              ) : (
+                <a
+                  key={i.id}
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-md bg-ink-800 px-2 py-1 text-xs text-ink-300 hover:bg-ink-700"
+                >
+                  {name}
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {lightbox && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={lightbox.name}
+          onClick={() => setLightbox(null)}
+          className="rise-in fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+        >
+          <img
+            src={lightbox.src}
+            alt={lightbox.name}
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-full max-w-full rounded-lg object-contain shadow-2xl"
+            style={{ imageRendering: 'pixelated' }}
+          />
+          <button
+            type="button"
+            onClick={() => setLightbox(null)}
+            aria-label="Close"
+            className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-ink-800/80 text-lg text-ink-200 hover:bg-ink-700"
+          >
+            ✕
+          </button>
+        </div>
       )}
     </div>
   );
