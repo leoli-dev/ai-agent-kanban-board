@@ -5,7 +5,7 @@ import type { AgentRun } from '@akb/shared';
 import { api } from '../lib/api';
 import { useWsTopics } from '../lib/ws';
 import { useT } from '../lib/i18n';
-import { formatCost, timeAgo } from '../lib/format';
+import { formatClock, formatCost, timeAgo } from '../lib/format';
 import { Loading, LoadError } from '../components/QueryState';
 
 interface ActivityRun extends AgentRun {
@@ -167,7 +167,13 @@ export default function Activity() {
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id} className="border-b border-ink-850 last:border-0 hover:bg-ink-850/50">
-                    <td className="whitespace-nowrap px-3 py-2 text-ink-500">{timeAgo(r.startedAt)}</td>
+                    <td
+                      className="whitespace-nowrap px-3 py-2"
+                      title={new Date(r.startedAt).toLocaleString()}
+                    >
+                      <div className="text-ink-300">{formatClock(r.startedAt)}</div>
+                      <div className="text-[10px] text-ink-600">{timeAgo(r.startedAt)}</div>
+                    </td>
                     <td className="max-w-52 px-3 py-2">
                       {r.taskId && r.taskTitle ? (
                         <Link to={`/tasks/${r.taskId}`} className="block truncate text-ink-200 hover:text-accent-300">
