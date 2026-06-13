@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS provider_profiles (
   engine TEXT NOT NULL,
   env_json TEXT NOT NULL DEFAULT '{}',
   model_label TEXT,
+  tier TEXT NOT NULL DEFAULT 'low',
   enabled INTEGER NOT NULL DEFAULT 1,
   cooldown_until INTEGER,
   disabled_reason TEXT,
@@ -141,4 +142,20 @@ CREATE TABLE IF NOT EXISTS settings (
   value_json TEXT NOT NULL
 );
 `);
+
+  // Additive column migrations for databases created before the column existed.
+  addColumnIfMissing(sqlite, 'provider_profiles', 'tier', "TEXT NOT NULL DEFAULT 'low'");
+}
+
+/** SQLite has no `ADD COLUMN IF NOT EXISTS`; check the table shape first. */
+function addColumnIfMissing(
+  sqlite: Database.Database,
+  table: string,
+  column: string,
+  definition: string,
+): void {
+  const cols = sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === column)) {
+    sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }

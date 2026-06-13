@@ -1,7 +1,7 @@
 import os from 'node:os';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
-import { AGENT_ROLES, ENGINES } from '@akb/shared';
+import { AGENT_ROLES, ENGINES, MODEL_TIERS } from '@akb/shared';
 import type { AppContext } from '../context.js';
 
 const ProfileBody = z.object({
@@ -9,6 +9,7 @@ const ProfileBody = z.object({
   engine: z.enum(ENGINES),
   env: z.record(z.string(), z.string()).default({}),
   modelLabel: z.string().nullable().optional(),
+  tier: z.enum(MODEL_TIERS).optional(),
   notes: z.string().nullable().optional(),
   enabled: z.boolean().optional(),
 });

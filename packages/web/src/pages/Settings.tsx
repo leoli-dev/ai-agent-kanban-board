@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AGENT_ROLES,
   ENGINES,
+  MODEL_TIERS,
   type AgentRole,
   type EngineId,
+  type ModelTier,
   type ProviderProfile,
   type Settings as AppSettings,
 } from '@akb/shared';
@@ -124,6 +126,12 @@ function ProvidersSection() {
   const toggle = useMutation({
     mutationFn: (p: ProviderProfile) =>
       api.patch(`/api/providers/${p.id}`, { enabled: !p.enabled }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['providers'] }),
+  });
+
+  const setTier = useMutation({
+    mutationFn: ({ id, tier }: { id: string; tier: ModelTier }) =>
+      api.patch(`/api/providers/${id}`, { tier }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['providers'] }),
   });
 
@@ -287,6 +295,27 @@ function ProvidersSection() {
                       </span>
                     )}
                   </p>
+                  <div className="mt-1.5 flex items-center gap-1.5">
+                    <span className="text-[10px] uppercase tracking-wide text-ink-500">
+                      {t('settings.provider.tier')}
+                    </span>
+                    <div className="flex gap-0.5 rounded-md bg-ink-950 p-0.5">
+                      {MODEL_TIERS.map((tier) => (
+                        <button
+                          key={tier}
+                          type="button"
+                          onClick={() => setTier.mutate({ id: p.id, tier })}
+                          className={`rounded px-2 py-0.5 text-[11px] transition-colors ${
+                            (p.tier ?? 'low') === tier
+                              ? 'bg-accent-400 font-medium text-ink-950'
+                              : 'text-ink-400 hover:text-ink-200'
+                          }`}
+                        >
+                          {t(`settings.provider.tier.${tier}`)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   {!p.enabled && (
                     <p className="mt-0.5 text-xs text-red-400">
                       {t('settings.provider.disabled')}

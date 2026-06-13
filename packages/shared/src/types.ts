@@ -110,12 +110,19 @@ export interface Task {
   updatedAt: number;
 }
 
+/** A model's intelligence/capability tier, used to escalate work that a weaker
+ * model can't get accepted. Ordered low < medium < high. */
+export const MODEL_TIERS = ['low', 'medium', 'high'] as const;
+export type ModelTier = (typeof MODEL_TIERS)[number];
+export const TIER_RANK: Record<ModelTier, number> = { low: 0, medium: 1, high: 2 };
+
 export interface ProviderProfile {
   id: string;
   name: string;
   engine: EngineId;
   env: Record<string, string>;
   modelLabel: string | null;
+  tier: ModelTier;
   enabled: boolean;
   cooldownUntil: number | null;
   disabledReason: string | null;

@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
 import { nanoid } from 'nanoid';
-import type { AgentRole, AgentRun, FailureClass, ProviderProfile } from '@akb/shared';
+import type { AgentRole, AgentRun, FailureClass, ModelTier, ProviderProfile } from '@akb/shared';
 import { QUOTA_COOLDOWN_MS, RUN_EVENT_THROTTLE_PER_SEC } from '../config.js';
 import { getAdapter } from '../engines/index.js';
 import type { NormalizedEvent, NormalizedResult } from '../engines/types.js';
@@ -28,11 +28,10 @@ export interface RunRequest {
   /** Pin a specific profile instead of role-based selection. */
   profileId?: string;
   /**
-   * Escalation floor into the role's priority ladder: skip models below this
-   * priority and start from a stronger one. Used to retry a repeatedly-rejected
-   * task on a more capable model. Default 0 = start from the top (cheapest).
+   * Intelligence floor for model selection: skip models below this tier so a
+   * repeatedly-rejected task retries on a more capable model. Default 'low'.
    */
-  minPriority?: number;
+  minTier?: ModelTier;
   images?: string[];
   /** Test/role overrides for watchdog timers. */
   timeouts?: { stuckMs?: number; wallClockMs?: number };
@@ -93,7 +92,7 @@ export class AgentRunner extends EventEmitter {
 
     let profile = req.profileId
       ? this.deps.registry.get(req.profileId)
-      : this.deps.registry.pickForRole(req.role, [], req.minPriority ?? 0);
+      : this.deps.registry.pickForRole(req.role, [], req.minTier ?? 'low');
 
     while (profile) {
       const prompt =
@@ -140,7 +139,7 @@ export class AgentRunner extends EventEmitter {
       crashRetried = false;
       profile = req.profileId
         ? null
-        : this.deps.registry.pickForRole(req.role, triedProfileIds, req.minPriority ?? 0);
+        : this.deps.registry.pickForRole(req.role, triedProfileIds, req.minTier ?? 'low');
     }
 
     const finalRun = attempts[attempts.length - 1] ?? null;

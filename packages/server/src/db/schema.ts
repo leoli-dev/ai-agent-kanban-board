@@ -81,6 +81,7 @@ export const providerProfiles = sqliteTable('provider_profiles', {
   engine: text('engine').notNull(),
   envJson: text('env_json').notNull().default('{}'),
   modelLabel: text('model_label'),
+  tier: text('tier').notNull().default('low'),
   enabled: integer('enabled').notNull().default(1),
   cooldownUntil: integer('cooldown_until'),
   disabledReason: text('disabled_reason'),

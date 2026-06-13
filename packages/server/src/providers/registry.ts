@@ -1,6 +1,6 @@
 import { and, asc, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
-import type { AgentRole, EngineId, ProviderProfile, RoleAssignment } from '@akb/shared';
+import { TIER_RANK, type AgentRole, type EngineId, type ModelTier, type ProviderProfile, type RoleAssignment } from '@akb/shared';
 import { schema, type Db } from '../db/index.js';
 import { toProviderProfile } from '../db/mappers.js';
 import type { ResolvedProfile } from '../engines/types.js';
@@ -11,6 +11,7 @@ export interface ProfileInput {
   engine: EngineId;
   env: Record<string, string>;
   modelLabel?: string | null;
+  tier?: ModelTier;
   notes?: string | null;
 }
 
@@ -43,6 +44,7 @@ export class ProviderRegistry {
         engine: input.engine,
         envJson: JSON.stringify(input.env),
         modelLabel: input.modelLabel ?? null,
+        tier: input.tier ?? 'low',
         notes: input.notes ?? null,
       })
       .run();
@@ -59,6 +61,7 @@ export class ProviderRegistry {
         engine: patch.engine ?? existing.engine,
         envJson: JSON.stringify(patch.env ?? existing.env),
         modelLabel: patch.modelLabel !== undefined ? patch.modelLabel : existing.modelLabel,
+        tier: patch.tier ?? existing.tier,
         notes: patch.notes !== undefined ? patch.notes : existing.notes,
         enabled: (patch.enabled ?? existing.enabled) ? 1 : 0,
         // Re-enabling clears failure state.
@@ -117,31 +120,35 @@ export class ProviderRegistry {
   /**
    * Provider selection for a role.
    *
-   * The role's ordered list doubles as an escalation ladder: priority 0 is the
-   * cheapest/preferred model, later entries are stronger. `minPriority` raises
-   * the floor — used to escalate a task to a more capable model after its work
-   * keeps getting rejected. Within that floor we still pick by priority and
-   * skip disabled / cooled-down / already-tried profiles (availability fallback).
-   * If nothing qualifies at or above the floor (we've escalated past the end of
-   * the list), we fall back to the strongest available profile (highest
-   * priority number) so the task still runs on the best model configured.
+   * Profiles are tried in the role's priority order, skipping disabled /
+   * cooled-down / already-tried ones (availability fallback). `minTier` is the
+   * intelligence floor: used to escalate a task to a more capable model after
+   * its work keeps getting rejected. We return the first eligible profile at or
+   * above that tier (still honoring priority order); if none qualifies — the
+   * configured models are all weaker than the floor — we fall back to the
+   * strongest available so the task still runs on the best model on hand.
    */
   pickForRole(
     role: AgentRole,
     excludeIds: string[] = [],
-    minPriority = 0,
+    minTier: ModelTier = 'low',
   ): ProviderProfile | null {
     const now = Date.now();
-    const available = this.assignments(role).filter((a) => {
-      if (excludeIds.includes(a.providerProfileId)) return false;
-      const profile = this.get(a.providerProfileId);
-      if (!profile || !profile.enabled) return false;
-      if (profile.cooldownUntil && profile.cooldownUntil > now) return false;
-      return true;
-    });
+    const available = this.assignments(role)
+      .map((a) => this.get(a.providerProfileId))
+      .filter(
+        (p): p is ProviderProfile =>
+          !!p &&
+          p.enabled &&
+          !excludeIds.includes(p.id) &&
+          !(p.cooldownUntil && p.cooldownUntil > now),
+      );
     if (available.length === 0) return null;
-    const chosen = available.find((a) => a.priority >= minPriority) ?? available[available.length - 1]!;
-    return this.get(chosen.providerProfileId);
+    const floor = TIER_RANK[minTier];
+    return (
+      available.find((p) => TIER_RANK[p.tier] >= floor) ??
+      available.reduce((best, p) => (TIER_RANK[p.tier] > TIER_RANK[best.tier] ? p : best))
+    );
   }
 
   markOk(id: string): void {

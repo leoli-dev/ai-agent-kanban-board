@@ -195,6 +195,10 @@ export const en: Record<string, string> = {
     'Injected into the agent process. Values may reference secrets as ${SECRET:NAME} — resolved from the Secrets vault below, falling back to your shell environment.',
   'settings.provider.addVar': 'add variable',
   'settings.provider.disabled': 'disabled',
+  'settings.provider.tier': 'Tier',
+  'settings.provider.tier.low': 'Low',
+  'settings.provider.tier.medium': 'Med',
+  'settings.provider.tier.high': 'High',
   'settings.provider.cooldown': 'cooling down until {time}',
   'settings.provider.deleteConfirm': 'Delete model setup "{name}"?',
   'settings.provider.testHint': 'Runs a real one-shot prompt ("reply OK") through this model to verify keys and connectivity.',
@@ -261,7 +265,7 @@ export const en: Record<string, string> = {
 
   'settings.roles': 'Role → model priority',
   'settings.roles.help':
-    'Order each role as a low→high ladder: cheapest/weakest model first, strongest last. The first model is tried first; if its work keeps getting rejected (review/test bounces), the task automatically escalates one step down to the next, stronger model — and so on. Separately, if a model is out of quota or rate-limited it cools down 15 min and the next takes over mid-task; an auth failure disables it until you re-enable it.',
+    'Each role tries its models in order. If a model is out of quota or rate-limited it cools down 15 min and the next takes over mid-task; an auth failure disables it until you re-enable it. Separately, each model has an intelligence tier (low/medium/high, set per model above): when a coder task keeps getting rejected (review/test bounces) it automatically escalates — 1st bounce → a medium-tier model, 2nd → a high-tier one.',
   'settings.roles.none': 'no models assigned',
   'settings.roles.add': 'add model…',
 

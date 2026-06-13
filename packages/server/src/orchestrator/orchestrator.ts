@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import type { Project, Task } from '@akb/shared';
+import type { ModelTier, Project, Task } from '@akb/shared';
 import type { ProviderRegistry } from '../providers/registry.js';
 import { SAFETY_TICK_MS } from '../config.js';
 import { schema, type Db } from '../db/index.js';
@@ -325,10 +325,12 @@ export class Orchestrator {
 
       updateTask(this.deps.db, this.deps.hub, task.id, { status: 'wip', blockedReason: null });
 
-      // Escalate up the coder ladder once per prior rejection (review/test
-      // bounce) or hard-failure retry: a weak model that can't satisfy the task
-      // hands off to a stronger one configured later in the role's list.
+      // Escalate the coder's intelligence tier with each prior rejection
+      // (review/test bounce) or hard-failure retry: a weaker model that can't
+      // get its work accepted hands off to a more capable one. 0 prior → low,
+      // 1 → medium, 2+ → high.
       const escalation = task.bounceCount + task.retryCount;
+      const minTier: ModelTier = escalation >= 2 ? 'high' : escalation === 1 ? 'medium' : 'low';
       const outcome = await this.deps.runner.run({
         role: 'coder',
         prompt: this.buildCoderPrompt(project, task, ws.artifacts, prep),
@@ -338,7 +340,7 @@ export class Orchestrator {
         projectId: project.id,
         addDirs: [ws.root],
         systemAppend: CODER_CONTRACT,
-        minPriority: escalation,
+        minTier,
         onStuck: (info) => this.diagnoseStuckRun(project, task, info.logTail, ws.artifacts),
       });
 

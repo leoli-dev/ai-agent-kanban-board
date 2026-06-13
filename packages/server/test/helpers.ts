@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { AgentRole } from '@akb/shared';
+import type { AgentRole, ModelTier } from '@akb/shared';
 import { openDb } from '../src/db/index.js';
 import { SettingsStore } from '../src/db/settings-store.js';
 import { WsHub } from '../src/ws/hub.js';
@@ -42,12 +42,18 @@ export interface MockScript {
 
 let profileCounter = 0;
 
-export function addMockProfile(ctx: TestCtx, role: AgentRole | null, script: MockScript) {
+export function addMockProfile(
+  ctx: TestCtx,
+  role: AgentRole | null,
+  script: MockScript,
+  tier: ModelTier = 'low',
+) {
   const name = `mock-${++profileCounter}`;
   const profile = ctx.registry.create({
     name,
     engine: 'mock',
     env: { MOCK_SCRIPT: JSON.stringify(script) },
+    tier,
   });
   if (role) {
     const existing = ctx.registry.assignments(role).map((a) => a.providerProfileId);

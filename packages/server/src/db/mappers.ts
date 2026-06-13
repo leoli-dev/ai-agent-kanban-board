@@ -84,6 +84,7 @@ export function toProviderProfile(r: Row<typeof schema.providerProfiles>): Provi
     engine: r.engine as EngineId,
     env: JSON.parse(r.envJson) as Record<string, string>,
     modelLabel: r.modelLabel,
+    tier: (r.tier as ProviderProfile['tier']) ?? 'low',
     enabled: r.enabled === 1,
     cooldownUntil: r.cooldownUntil,
     disabledReason: r.disabledReason,

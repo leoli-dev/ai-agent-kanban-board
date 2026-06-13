@@ -195,6 +195,10 @@ export const zh: Record<string, string> = {
     '注入到智能体进程。值可以用 ${SECRET:NAME} 引用密钥——先从下方密钥库解析，找不到再回退到服务器的环境变量。',
   'settings.provider.addVar': '添加变量',
   'settings.provider.disabled': '已停用',
+  'settings.provider.tier': '智力档',
+  'settings.provider.tier.low': '低',
+  'settings.provider.tier.medium': '中',
+  'settings.provider.tier.high': '高',
   'settings.provider.cooldown': '冷却中，至 {time}',
   'settings.provider.deleteConfirm': '删除模型配置 "{name}"？',
   'settings.provider.testHint': '通过该模型真实运行一次单条提示（"回复 OK"），验证密钥和连通性。',
@@ -261,7 +265,7 @@ export const zh: Record<string, string> = {
 
   'settings.roles': '角色 → 模型优先级',
   'settings.roles.help':
-    '把每个角色排成「低→高」的阶梯：最便宜/最弱的放最前，最强的放最后。先用第一个模型；如果它的产出反复被打回（审查/测试 bounce），任务会自动向下升级到下一个更强的模型，依此类推。另外，模型额度耗尽或被限流时会冷却 15 分钟、由下一个接管；鉴权失败则停用，需手动重新启用。',
+    '每个角色按顺序尝试模型：额度耗尽或被限流时该模型冷却 15 分钟、由下一个接管；鉴权失败则停用，需手动重新启用。另外，每个模型都有「智力档」（低/中/高，在上方各模型处设置）：当 coder 任务反复被打回（审查/测试 bounce）时会自动升级——第 1 次打回 → 换中档模型，第 2 次 → 换高档模型。',
   'settings.roles.none': '未分配模型',
   'settings.roles.add': '添加模型…',
 

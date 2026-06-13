@@ -403,12 +403,12 @@ describe('Orchestrator (money test)', () => {
     expect(taskStatus(f.ctx, 't1')).toBe('failed');
   }, 30_000);
 
-  it('escalates the coder to a stronger provider after a bounce', async () => {
+  it('escalates the coder to a higher-tier model after a bounce', async () => {
     const f = makeFixture([{ id: 't1', deps: [] }]);
     f.ctx.settings.update({ maxBounces: 1, autoAdvanceTest: false });
-    // Coder ladder: priority 0 = weak (cheap), priority 1 = strong.
-    const weak = addMockProfile(f.ctx, 'coder', scripts.success('weak attempt'));
-    const strong = addMockProfile(f.ctx, 'coder', scripts.success('strong attempt'));
+    // Coder ladder by intelligence tier: low first, high reserved for escalation.
+    const weak = addMockProfile(f.ctx, 'coder', scripts.success('weak attempt'), 'low');
+    const strong = addMockProfile(f.ctx, 'coder', scripts.success('strong attempt'), 'high');
     // Reviewer always requests changes, so the task keeps bouncing.
     addMockProfile(
       f.ctx,
@@ -429,8 +429,8 @@ describe('Orchestrator (money test)', () => {
       .filter((r) => r.role === 'coder')
       .sort((a, b) => a.startedAt - b.startedAt);
     expect(coderRuns.length).toBe(2);
-    expect(coderRuns[0]!.providerProfileId).toBe(weak.id); // first attempt: cheapest
-    expect(coderRuns[1]!.providerProfileId).toBe(strong.id); // escalated after the bounce
+    expect(coderRuns[0]!.providerProfileId).toBe(weak.id); // first attempt: low tier
+    expect(coderRuns[1]!.providerProfileId).toBe(strong.id); // escalated to high tier after the bounce
   }, 30_000);
 
   it('bounces a task back to the coder when review requests changes', async () => {
