@@ -100,6 +100,10 @@ export const zh: Record<string, string> = {
   'new.ideaPlaceholder': '描述你想做什么。规划智能体会完善它，如有不清楚的地方会向你提问。',
   'new.repo': '目标仓库路径',
   'new.repoHint': '智能体工作的本地文件夹（在专用分支上）。不存在时会自动创建并初始化 git 仓库。',
+  'new.repoName': '仓库名',
+  'new.repoNameHint': '只填一个文件夹名。智能体在此工作（专用分支），不存在时自动创建并初始化 git。',
+  'new.repoNameInvalid': '只能是一个文件夹名 —— 不能含「/」「\\」或「..」。',
+  'new.repoChangeDefault': '将创建于',
   'new.name': '项目名称',
   'new.nameOptional': '可选',
   'new.namePlaceholder': '留空则从想法自动生成',
@@ -273,6 +277,9 @@ export const zh: Record<string, string> = {
   'settings.secrets.help':
     'API 密钥保存在本机 data/secrets.json（文件权限 600）——不进数据库，保存后也不会再发给浏览器。在供应商环境变量里用 ${SECRET:NAME} 引用。这里找不到时服务器会回退到自己的环境变量，所以已有的 shell export 仍然有效。',
 
+  'settings.defaultDir': '默认项目目录',
+  'settings.defaultDir.help':
+    '所有新项目的根目录。每个项目创建在 {目录}/{仓库名}；新建项目时只填仓库名，无法指向此目录之外。~ 会展开为你的主目录。',
   'settings.pipeline': '流水线',
   'settings.pipeline.help': '调度器如何排程、监督和重试智能体运行。',
   'settings.stuck': '卡死阈值（分钟）',

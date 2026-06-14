@@ -4,6 +4,7 @@ import type { AppContext } from '../context.js';
 
 const SettingsPatch = z
   .object({
+    defaultProjectDir: z.string().min(1),
     stuckThresholdMin: z.number().min(1).max(240),
     wallClockLimitMin: z.number().min(1).max(24 * 60),
     maxRetries: z.number().min(0).max(10),

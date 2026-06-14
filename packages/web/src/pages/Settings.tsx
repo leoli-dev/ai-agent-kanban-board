@@ -744,6 +744,22 @@ function PipelineSection() {
   return (
     <section>
       <SectionHeader title={t('settings.pipeline')} help={t('settings.pipeline.help')} />
+      <div className="card mb-2 p-3">
+        <label className="block text-xs font-medium text-ink-300">
+          {t('settings.defaultDir')}
+          <input
+            type="text"
+            defaultValue={settings.defaultProjectDir}
+            onBlur={(e) => {
+              const v = e.target.value.trim();
+              if (v && v !== settings.defaultProjectDir) update.mutate({ defaultProjectDir: v });
+            }}
+            placeholder="~/Code"
+            className="input-base mt-1.5 font-mono"
+          />
+        </label>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-ink-500">{t('settings.defaultDir.help')}</p>
+      </div>
       <div className="grid gap-2 sm:grid-cols-2">
         {num('settings.stuck', 'settings.stuck.help', 'stuckThresholdMin', 1, 240)}
         {num('settings.wallclock', 'settings.wallclock.help', 'wallClockLimitMin', 1, 1440)}

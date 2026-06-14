@@ -179,6 +179,9 @@ export interface PlannerMessage {
 }
 
 export interface Settings {
+  /** Base folder all new projects are created under; per-project paths are
+   * {defaultProjectDir}/{repoName} and may not escape it. */
+  defaultProjectDir: string;
   stuckThresholdMin: number;
   wallClockLimitMin: number;
   maxRetries: number;
@@ -201,6 +204,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  defaultProjectDir: '~/Code',
   stuckThresholdMin: 10,
   wallClockLimitMin: 60,
   maxRetries: 2,

@@ -100,6 +100,10 @@ export const en: Record<string, string> = {
   'new.ideaPlaceholder': 'Describe what you want built. The planner agent will refine it and ask follow-up questions if anything is unclear.',
   'new.repo': 'Target repo path',
   'new.repoHint': 'Local folder the agents work in (on a dedicated branch). Created and git-initialized automatically if it doesn’t exist yet.',
+  'new.repoName': 'Repo name',
+  'new.repoNameHint': 'A single folder name. Agents work here, on a dedicated branch; created and git-initialized automatically.',
+  'new.repoNameInvalid': 'Just a folder name — no “/”, “\\”, or “..”.',
+  'new.repoChangeDefault': 'Will be created at',
   'new.name': 'Project name',
   'new.nameOptional': 'optional',
   'new.namePlaceholder': 'Derived from the prompt if empty',
@@ -273,6 +277,9 @@ export const en: Record<string, string> = {
   'settings.secrets.help':
     'API keys live in data/secrets.json on this machine (file mode 600) — never in the database, never sent to the browser after saving. Reference them in provider env values as ${SECRET:NAME}. If a name is not found here, the server falls back to its own environment variables, so existing shell exports keep working.',
 
+  'settings.defaultDir': 'Default project folder',
+  'settings.defaultDir.help':
+    'Base folder for all new projects. Each project is created at {folder}/{repo-name}; the new-project form only takes a repo name and cannot point outside this folder. ~ expands to your home directory.',
   'settings.pipeline': 'Pipeline',
   'settings.pipeline.help': 'How the orchestrator schedules, supervises, and retries agent runs.',
   'settings.stuck': 'Stuck threshold (min)',

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Project } from '@akb/shared';
+import { useQuery } from '@tanstack/react-query';
+import type { Project, Settings } from '@akb/shared';
 import { api, ApiError } from '../lib/api';
 import { useT } from '../lib/i18n';
 import { UploadDropzone } from '../components/UploadDropzone';
@@ -10,11 +11,19 @@ export default function NewProject() {
   const navigate = useNavigate();
   const [prompt, setPrompt] = useState('');
   const [name, setName] = useState('');
-  const [repoPath, setRepoPath] = useState('');
+  const [repoName, setRepoName] = useState('');
   const [links, setLinks] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api.get<Settings>('/api/settings'),
+  });
+  const defaultDir = (settings?.defaultProjectDir ?? '~/Code').replace(/\/+$/, '');
+  const trimmedRepo = repoName.trim();
+  const repoValid = !!trimmedRepo && !/[/\\]/.test(trimmedRepo) && !trimmedRepo.includes('..');
 
   async function submit() {
     setError(null);
@@ -27,7 +36,7 @@ export default function NewProject() {
       const project = await api.post<Project>('/api/projects', {
         prompt,
         name: name || undefined,
-        targetRepoPath: repoPath,
+        repoName: trimmedRepo,
         links: linkList,
       });
       if (files.length) {
@@ -63,14 +72,36 @@ export default function NewProject() {
 
         <label className="block">
           <span className={label}>
-            {t('new.repo')} * <span className="font-normal text-ink-500">— {t('new.repoHint')}</span>
+            {t('new.repoName')} *{' '}
+            <span className="font-normal text-ink-500">— {t('new.repoNameHint')}</span>
           </span>
-          <input
-            value={repoPath}
-            onChange={(e) => setRepoPath(e.target.value)}
-            placeholder="~/Code/my-project"
-            className="input-base font-mono"
-          />
+          <div
+            className={`flex items-stretch overflow-hidden rounded-lg border bg-ink-900 font-mono focus-within:border-accent-500/60 ${
+              trimmedRepo && !repoValid ? 'border-red-800' : 'border-ink-700'
+            }`}
+          >
+            <span className="flex shrink-0 items-center whitespace-nowrap border-r border-ink-800 bg-ink-850 px-3 py-2 text-sm text-ink-500">
+              {defaultDir}/
+            </span>
+            <input
+              value={repoName}
+              onChange={(e) => setRepoName(e.target.value)}
+              placeholder="my-project"
+              className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-ink-100 outline-none"
+            />
+          </div>
+          <p className="mt-1 text-[11px] text-ink-500">
+            {trimmedRepo && !repoValid ? (
+              <span className="text-red-400">{t('new.repoNameInvalid')}</span>
+            ) : (
+              <>
+                {t('new.repoChangeDefault')}{' '}
+                <span className="font-mono text-ink-400">
+                  {defaultDir}/{trimmedRepo || 'my-project'}
+                </span>
+              </>
+            )}
+          </p>
         </label>
 
         <label className="block">
@@ -112,7 +143,7 @@ export default function NewProject() {
 
         <button
           onClick={submit}
-          disabled={busy || !prompt.trim() || !repoPath.trim()}
+          disabled={busy || !prompt.trim() || !repoValid}
           className="btn btn-primary w-full py-3 text-sm font-semibold"
         >
           {busy ? t('new.creating') : t('new.create')}

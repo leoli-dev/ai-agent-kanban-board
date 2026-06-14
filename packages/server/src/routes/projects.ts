@@ -15,9 +15,14 @@ import { scaffoldWorkspace, slugify, workspacePaths } from '../workspace/workspa
 const CreateProjectBody = z.object({
   name: z.string().min(1).optional(),
   prompt: z.string().min(1),
-  targetRepoPath: z.string().min(1),
+  /** A single folder name; the full path is {defaultProjectDir}/{repoName}. */
+  repoName: z.string().min(1),
   links: z.array(z.string().url()).default([]),
 });
+
+function expandHome(p: string): string {
+  return p.startsWith('~') ? path.join(process.env.HOME ?? '~', p.slice(1)) : p;
+}
 
 /**
  * A short project name from the prompt's first line. Splitting on whitespace
@@ -95,7 +100,28 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
   app.post('/api/projects', async (req, reply) => {
     const body = CreateProjectBody.parse(req.body);
 
-    const repoPath = path.resolve(body.targetRepoPath.replace(/^~/, process.env.HOME ?? '~'));
+    // The repo name must be a single folder segment confined to the configured
+    // default project dir — no slashes, no traversal, no escaping the base.
+    const repoName = body.repoName.trim();
+    if (
+      !repoName ||
+      repoName === '.' ||
+      repoName === '..' ||
+      repoName.includes('/') ||
+      repoName.includes('\\') ||
+      repoName.includes('..')
+    ) {
+      return reply
+        .code(400)
+        .send({ error: 'repo name must be a single folder name (no "/", "\\", or "..")' });
+    }
+    const baseDir = path.resolve(expandHome(ctx.settings.get().defaultProjectDir));
+    const repoPath = path.join(baseDir, repoName);
+    // Defense in depth: the resolved path must stay inside baseDir.
+    const rel = path.relative(baseDir, repoPath);
+    if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
+      return reply.code(400).send({ error: 'target path escapes the default project folder' });
+    }
     if (fs.existsSync(repoPath) && !fs.statSync(repoPath).isDirectory()) {
       return reply.code(400).send({ error: `target path is a file, not a directory: ${repoPath}` });
     }
