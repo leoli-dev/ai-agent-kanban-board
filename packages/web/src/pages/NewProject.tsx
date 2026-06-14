@@ -112,7 +112,7 @@ export default function NewProject() {
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder={t('new.namePlaceholder')}
+            placeholder={trimmedRepo || t('new.namePlaceholder')}
             className="input-base"
           />
         </label>

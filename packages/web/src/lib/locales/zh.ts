@@ -106,7 +106,7 @@ export const zh: Record<string, string> = {
   'new.repoChangeDefault': '将创建于',
   'new.name': '项目名称',
   'new.nameOptional': '可选',
-  'new.namePlaceholder': '留空则从想法自动生成',
+  'new.namePlaceholder': '留空则使用仓库名',
   'new.links': '参考链接',
   'new.linksHint': '每行一个 URL',
   'new.files': '资源文件',

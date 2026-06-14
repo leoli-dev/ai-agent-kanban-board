@@ -106,7 +106,7 @@ export const en: Record<string, string> = {
   'new.repoChangeDefault': 'Will be created at',
   'new.name': 'Project name',
   'new.nameOptional': 'optional',
-  'new.namePlaceholder': 'Derived from the prompt if empty',
+  'new.namePlaceholder': 'Defaults to the repo name',
   'new.links': 'Reference links',
   'new.linksHint': 'one URL per line',
   'new.files': 'Resource files',
