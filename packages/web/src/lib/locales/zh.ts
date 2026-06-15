@@ -32,6 +32,8 @@ export const zh: Record<string, string> = {
   'common.cancel': '取消',
   'common.delete': '删除',
   'common.edit': '编辑',
+  'common.duplicate': '复制',
+  'settings.provider.duplicateHint': '复制此模型（设置相同，名字加「 copy」）',
   'common.enable': '启用',
   'common.disable': '停用',
   'common.test': '测试',

@@ -135,6 +135,19 @@ function ProvidersSection() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['providers'] }),
   });
 
+  const duplicate = useMutation({
+    mutationFn: (p: ProviderProfile) =>
+      api.post('/api/providers', {
+        name: `${p.name} copy`,
+        engine: p.engine,
+        env: p.env,
+        modelLabel: p.modelLabel,
+        tier: p.tier,
+        notes: p.notes,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['providers'] }),
+  });
+
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/api/providers/${id}`),
     onSuccess: () => {
@@ -379,6 +392,14 @@ function ProvidersSection() {
                     className="btn btn-ghost px-2.5 py-1 text-xs"
                   >
                     {t('common.edit')}
+                  </button>
+                  <button
+                    onClick={() => duplicate.mutate(p)}
+                    disabled={duplicate.isPending}
+                    title={t('settings.provider.duplicateHint')}
+                    className="btn btn-ghost px-2.5 py-1 text-xs"
+                  >
+                    {t('common.duplicate')}
                   </button>
                   <button onClick={() => toggle.mutate(p)} className="btn btn-ghost px-2.5 py-1 text-xs">
                     {p.enabled ? t('common.disable') : t('common.enable')}

@@ -32,6 +32,8 @@ export const en: Record<string, string> = {
   'common.cancel': 'Cancel',
   'common.delete': 'Delete',
   'common.edit': 'Edit',
+  'common.duplicate': 'Copy',
+  'settings.provider.duplicateHint': 'Duplicate this model (same settings, name + " copy")',
   'common.enable': 'Enable',
   'common.disable': 'Disable',
   'common.test': 'Test',
