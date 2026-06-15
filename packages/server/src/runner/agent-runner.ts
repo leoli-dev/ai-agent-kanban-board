@@ -416,6 +416,7 @@ export class AgentRunner extends EventEmitter {
         kind: event.kind,
         text: 'text' in event ? event.text : undefined,
         tool: 'tool' in event ? event.tool : undefined,
+        detail: 'detail' in event ? event.detail : undefined,
         ts: Date.now(),
       },
     };

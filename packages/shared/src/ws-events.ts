@@ -18,7 +18,7 @@ export type WsServerMessage =
   | {
       type: 'run.event';
       runId: string;
-      event: { kind: string; text?: string; tool?: string; raw?: unknown; ts: number };
+      event: { kind: string; text?: string; tool?: string; detail?: string; raw?: unknown; ts: number };
     }
   | { type: 'question.pending'; projectId: string; sessionId: string }
   | { type: 'plan.ready'; projectId: string }

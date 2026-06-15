@@ -1,3 +1,4 @@
+import { summarizeToolInput } from '@akb/shared';
 import { classifyOutput } from '../providers/failure-classifier.js';
 import type { EngineAdapter, NormalizedEvent, SpawnRequest, SpawnSpec } from './types.js';
 
@@ -78,7 +79,7 @@ export const claudeCodeAdapter: EngineAdapter = {
         return {
           kind: 'tool',
           tool: toolUse.name,
-          detail: JSON.stringify(toolUse.input ?? {}).slice(0, 300),
+          detail: summarizeToolInput(toolUse.name, toolUse.input),
         };
       }
       const text = content

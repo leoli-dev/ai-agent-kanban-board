@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { summarizeToolInput } from '@akb/shared';
 import { useWsTopics } from '../lib/ws';
 import { useT } from '../lib/i18n';
 
@@ -45,11 +46,14 @@ function renderEvent(obj: Record<string, unknown>, key: string): LogLine {
   }
   if (type === 'assistant') {
     const msg = obj.message as
-      | { content?: { type?: string; text?: string; name?: string }[] }
+      | { content?: { type?: string; text?: string; name?: string; input?: unknown }[] }
       | undefined;
     const content = msg?.content ?? [];
     const tool = content.find((c) => c.type === 'tool_use');
-    if (tool?.name) return { key, kind: 'tool', text: `⚙ ${tool.name}` };
+    if (tool?.name) {
+      const detail = summarizeToolInput(tool.name, tool.input);
+      return { key, kind: 'tool', text: `⚙ ${tool.name}${detail ? ` · ${detail}` : ''}` };
+    }
     const text = content
       .filter((c) => c.type === 'text')
       .map((c) => c.text)
@@ -89,7 +93,7 @@ export function LogStream({ runId, active }: { runId: string; active: boolean })
       const e = msg.event;
       const text =
         e.kind === 'tool'
-          ? `⚙ ${e.tool ?? ''}`
+          ? `⚙ ${e.tool ?? ''}${e.detail ? ` · ${e.detail}` : ''}`
           : e.kind === 'result'
             ? `■ ${e.text ?? ''}`
             : (e.text ?? '');
