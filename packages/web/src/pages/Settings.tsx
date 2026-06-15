@@ -320,7 +320,7 @@ function ProvidersSection() {
                     {p.modelLabel}
                   </span>
                 )}
-                <span className="ml-1 flex items-center gap-1.5">
+                <span className="ml-auto flex items-center gap-1.5">
                   <span className="text-[10px] uppercase tracking-wide text-ink-500">
                     {t('settings.provider.tier')}
                   </span>
