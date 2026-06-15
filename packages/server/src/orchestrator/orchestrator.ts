@@ -16,6 +16,7 @@ import type { Notifier } from '../notify/notifier.js';
 import type { ReportService } from '../reports/report-service.js';
 import type { WsHub } from '../ws/hub.js';
 import {
+  branchExists,
   commitAll,
   defaultBranch,
   deleteBranch,
@@ -268,6 +269,20 @@ export class Orchestrator {
       let mergeConflict = false;
       if (existed) {
         mergeConflict = (await mergeBaseLeaveConflicts(dir, project.gitBranch)) === 'conflict';
+      } else {
+        // Fresh worktree branched off the integration base. A dependency may
+        // have committed its work but not yet been integrated (dependents start
+        // as soon as a dep hits to_review). Merge each dependency's branch in so
+        // this task builds ON its dependencies' actual code — otherwise it would
+        // start from a base missing that work and collide with it at merge time,
+        // bouncing a green task back to backlog.
+        for (const depId of task.dependsOn) {
+          const dep = getTask(this.deps.db, depId);
+          if (!dep) continue;
+          const depBranch = this.taskBranch(project, dep);
+          if (!(await branchExists(project.targetRepoPath, depBranch))) continue;
+          if ((await mergeBaseLeaveConflicts(dir, depBranch)) === 'conflict') mergeConflict = true;
+        }
       }
       return { cwd: dir, branch, mergeConflict };
     } catch (err) {

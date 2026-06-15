@@ -598,4 +598,39 @@ describe('Orchestrator (money test)', () => {
     expect(show('frontend.txt')).toBe('ui');
     expect(show('backend.txt')).toBe('api');
   }, 30_000);
+
+  it('a dependent builds on its dependency’s committed work, even before the dependency is integrated', async () => {
+    const f = makeFixture([
+      { id: 't1', deps: [] },
+      { id: 't2', deps: ['t1'] },
+    ]);
+    const wt = (taskId: string) => path.join(f.ctx.tmpDir, f.projectId, 'worktrees', taskId);
+    addMockProfile(
+      f.ctx,
+      'coder',
+      phased(
+        [
+          scripts.success('t1 done', {
+            writeFiles: [{ path: path.join(wt('t1'), 'shared.txt'), content: 'from-t1' }],
+          }),
+          scripts.success('t2 done', {
+            writeFiles: [{ path: path.join(wt('t2'), 't2.txt'), content: 'from-t2' }],
+          }),
+        ],
+        path.join(f.ctx.tmpDir, 'stateDep'),
+      ),
+    );
+
+    f.orchestrator.start();
+    // No reviewer/tester configured: tasks park at to_review. t1 commits its
+    // work on its own branch but is NOT integrated, yet t2 starts (deps are
+    // satisfied at to_review) and must already see t1's file in its worktree.
+    await waitFor(() => taskStatus(f.ctx, 't2') === 'to_review');
+    f.orchestrator.stop();
+
+    // t1 never integrated (still parked, worktree present), so the only way
+    // t2's worktree contains shared.txt is the dependency-branch merge at prep.
+    expect(taskStatus(f.ctx, 't1')).toBe('to_review');
+    expect(fs.readFileSync(path.join(wt('t2'), 'shared.txt'), 'utf8')).toBe('from-t1');
+  });
 });

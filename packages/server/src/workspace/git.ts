@@ -144,6 +144,12 @@ export async function pruneWorktrees(repoPath: string): Promise<void> {
 }
 
 /** The repo's default branch — main/master if present, else the current one. */
+/** Whether a local branch exists in the repo. */
+export async function branchExists(repoPath: string, branch: string): Promise<boolean> {
+  const locals = await simpleGit(repoPath).branchLocal().catch(() => ({ all: [] as string[] }));
+  return locals.all.includes(branch);
+}
+
 /** The repo's current HEAD commit sha, or null if it has no commits yet. */
 export async function headCommit(repoPath: string): Promise<string | null> {
   return simpleGit(repoPath)
