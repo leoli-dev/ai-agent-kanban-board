@@ -29,6 +29,7 @@ export const en: Record<string, string> = {
   // common
   'common.loading': 'Loading…',
   'common.save': 'Save',
+  'common.saving': 'Saving…',
   'common.cancel': 'Cancel',
   'common.delete': 'Delete',
   'common.edit': 'Edit',
@@ -120,6 +121,7 @@ export const en: Record<string, string> = {
 
   // project detail
   'project.idea': 'Idea',
+  'project.editIdea': 'Edit idea',
   'project.plan': 'Plan',
   'project.tasks': 'Tasks',
   'project.startPlanning': 'Start planning',

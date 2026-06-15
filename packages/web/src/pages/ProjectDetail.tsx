@@ -21,6 +21,8 @@ export default function ProjectDetail() {
   const [showReject, setShowReject] = useState(false);
   const [showRestart, setShowRestart] = useState(false);
   const [showReset, setShowReset] = useState(false);
+  const [editingIdea, setEditingIdea] = useState(false);
+  const [ideaDraft, setIdeaDraft] = useState('');
 
   const { data: project, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['project', projectId],
@@ -115,6 +117,13 @@ export default function ProjectDetail() {
   const stopRun = useMutation({
     mutationFn: () => api.post(`/api/projects/${projectId}/run/stop`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['project', projectId] }),
+  });
+  const saveIdea = useMutation({
+    mutationFn: (prompt: string) => api.patch(`/api/projects/${projectId}`, { prompt }),
+    onSuccess: () => {
+      setEditingIdea(false);
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+    },
   });
   const reset = useMutation({
     mutationFn: () => api.post(`/api/projects/${projectId}/reset`),
@@ -299,8 +308,53 @@ export default function ProjectDetail() {
       )}
 
       <section className="card p-4">
-        <h2 className="mb-2 text-sm font-semibold text-ink-300">{t('project.idea')}</h2>
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-200">{project.prompt}</p>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-ink-300">{t('project.idea')}</h2>
+          {['draft', 'failed'].includes(project.status) && !editingIdea && (
+            <button
+              onClick={() => {
+                setIdeaDraft(project.prompt);
+                setEditingIdea(true);
+              }}
+              className="btn btn-ghost px-2.5 py-1 text-xs"
+            >
+              {t('project.editIdea')}
+            </button>
+          )}
+        </div>
+        {editingIdea ? (
+          <div>
+            <textarea
+              value={ideaDraft}
+              onChange={(e) => setIdeaDraft(e.target.value)}
+              rows={8}
+              autoFocus
+              className="input w-full resize-y font-mono text-sm leading-relaxed"
+            />
+            <div className="mt-2 flex gap-2">
+              <button
+                onClick={() => saveIdea.mutate(ideaDraft)}
+                disabled={saveIdea.isPending || !ideaDraft.trim() || ideaDraft === project.prompt}
+                className="btn btn-primary px-3.5 py-1.5 text-xs font-semibold"
+              >
+                {saveIdea.isPending ? t('common.saving') : t('common.save')}
+              </button>
+              <button
+                onClick={() => setEditingIdea(false)}
+                className="btn btn-ghost px-3.5 py-1.5 text-xs"
+              >
+                {t('common.cancel')}
+              </button>
+            </div>
+            {saveIdea.isError && (
+              <p className="mt-2 text-xs text-red-300">
+                {String((saveIdea.error as Error).message)}
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-200">{project.prompt}</p>
+        )}
         <ProjectInputs inputs={project.inputs} t={t} />
       </section>
 

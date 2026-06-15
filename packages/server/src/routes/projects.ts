@@ -205,6 +205,34 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     return { ...toProject(row), inputs, plans };
   });
 
+  /**
+   * Edit the project's idea (prompt). Only allowed before there's a plan —
+   * draft (incl. after a full reset) or a failed project — so the idea stays
+   * consistent with any plan derived from it.
+   */
+  app.patch('/api/projects/:id', async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const body = z.object({ prompt: z.string().min(1) }).parse(req.body);
+    const row = ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get();
+    if (!row) return reply.code(404).send({ error: 'project not found' });
+    if (!['draft', 'failed'].includes(row.status)) {
+      return reply
+        .code(409)
+        .send({ error: 'the idea can only be edited before planning (draft state)' });
+    }
+    ctx.db
+      .update(schema.projects)
+      .set({ prompt: body.prompt.trim() })
+      .where(eq(schema.projects.id, id))
+      .run();
+    const project = toProject(
+      ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get()!,
+    );
+    ctx.hub.publish('global', { type: 'project.updated', project });
+    ctx.hub.publish(`board:${id}`, { type: 'project.updated', project });
+    return project;
+  });
+
   /** Pause/resume: a paused project is skipped by the orchestrator; running
    * agents are killed on pause and their tasks re-queued. */
   app.post('/api/projects/:id/pause', async (req, reply) => {

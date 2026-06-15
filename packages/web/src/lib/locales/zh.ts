@@ -29,6 +29,7 @@ export const zh: Record<string, string> = {
   // common
   'common.loading': '加载中…',
   'common.save': '保存',
+  'common.saving': '保存中…',
   'common.cancel': '取消',
   'common.delete': '删除',
   'common.edit': '编辑',
@@ -120,6 +121,7 @@ export const zh: Record<string, string> = {
 
   // project detail
   'project.idea': '想法',
+  'project.editIdea': '编辑想法',
   'project.plan': '计划',
   'project.tasks': '任务',
   'project.startPlanning': '开始规划',
