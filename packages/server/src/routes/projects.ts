@@ -11,6 +11,7 @@ import { toPlanDocument, toProject, toProjectInput, toTask } from '../db/mappers
 import type { AppContext } from '../context.js';
 import {
   defaultBranch,
+  headCommit,
   initRepoWithBaseline,
   isGitRepo,
   pruneWorktrees,
@@ -136,6 +137,8 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     } catch (err) {
       return reply.code(400).send({ error: `could not prepare git repository: ${String(err)}` });
     }
+    // The repo's starting point — a hard restart rolls the default branch back here.
+    const baseCommit = await headCommit(repoPath);
     const paths = scaffoldWorkspace(ctx.workspacesDir, id);
 
     ctx.db
@@ -149,6 +152,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
         targetRepoPath: repoPath,
         gitBranch: `agent/${slugify(name)}-${id.slice(0, 4).toLowerCase()}`,
         freshRepo: freshRepo ? 1 : 0,
+        baseCommit,
         createdAt: Date.now(),
       })
       .run();
@@ -252,11 +256,26 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     if (!row) return reply.code(404).send({ error: 'project not found' });
     const project = toProject(row);
 
-    // Stop the live preview and kill any in-flight agents.
-    ctx.projectRunner.stop(id);
-    for (const run of ctx.runStore.listByProject(id)) {
-      if (run.status === 'running') ctx.runner.kill(run.id);
+    // Stop the live preview and kill any in-flight agents. Best-effort: a
+    // restart must succeed even if a runner is already gone or wedged.
+    try {
+      ctx.projectRunner.stop(id);
+    } catch {
+      /* preview may not be running */
     }
+    let killedRun = false;
+    for (const run of ctx.runStore.listByProject(id)) {
+      if (run.status !== 'running') continue;
+      try {
+        ctx.runner.kill(run.id);
+        killedRun = true;
+      } catch {
+        /* already exited */
+      }
+    }
+    // Give killed agents a moment to release their worktree handles before we
+    // delete the directories out from under them (avoids EBUSY on fs.rmSync).
+    if (killedRun) await new Promise((r) => setTimeout(r, 750));
 
     // Wipe run history + logs + artifacts so the task pages start clean.
     const taskIds = ctx.db
@@ -273,7 +292,11 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     // Drop the project's worktrees, logs and artifacts, then wipe the repo.
     const paths = workspacePaths(ctx.workspacesDir, id);
     for (const dir of [path.join(paths.root, 'worktrees'), paths.logs, paths.artifacts, paths.qa]) {
-      fs.rmSync(dir, { recursive: true, force: true });
+      try {
+        fs.rmSync(dir, { recursive: true, force: true });
+      } catch {
+        /* best-effort: a stray lock shouldn't block the reset */
+      }
     }
     fs.mkdirSync(paths.logs, { recursive: true });
     fs.mkdirSync(paths.artifacts, { recursive: true });
@@ -281,7 +304,13 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     const target = await defaultBranch(project.targetRepoPath).catch(() => 'main');
     const newBranch = `agent/${slugify(project.name)}-${id.slice(0, 4).toLowerCase()}`;
     try {
-      await resetProjectRepo(project.targetRepoPath, target, newBranch, project.freshRepo);
+      await resetProjectRepo(
+        project.targetRepoPath,
+        target,
+        newBranch,
+        project.baseCommit,
+        project.freshRepo,
+      );
     } catch (err) {
       return reply.code(400).send({ error: `could not reset the repository: ${String(err)}` });
     }

@@ -30,6 +30,7 @@ export function toProject(r: Row<typeof schema.projects>): Project {
     targetRepoPath: r.targetRepoPath,
     gitBranch: r.gitBranch,
     freshRepo: r.freshRepo === 1,
+    baseCommit: r.baseCommit,
     liveUrl: r.liveUrl,
     runPid: r.runPid,
     createdAt: r.createdAt,

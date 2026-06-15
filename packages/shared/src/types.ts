@@ -71,6 +71,9 @@ export interface Project {
   gitBranch: string | null;
   /** True when we created the repo from scratch — only these auto-merge to main. */
   freshRepo: boolean;
+  /** The repo's HEAD when the project was created — a hard restart rolls the
+   * default branch back to this. Null for projects created before this existed. */
+  baseCommit: string | null;
   /** URL of the live preview the server hosts for a finished project. */
   liveUrl: string | null;
   /** PID of the hosted preview process. */

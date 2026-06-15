@@ -11,6 +11,9 @@ export const projects = sqliteTable('projects', {
   /** 1 when we created the repo from scratch (no pre-existing git) — only these
    * are auto-merged into the default branch on completion. */
   freshRepo: integer('fresh_repo').notNull().default(0),
+  /** The repo's HEAD commit when the project was created — the "starting point"
+   * a hard restart rolls the default branch back to. */
+  baseCommit: text('base_commit'),
   /** URL of the live preview the server is hosting for a finished project. */
   liveUrl: text('live_url'),
   /** PID of the hosted preview process (for stopping it). */

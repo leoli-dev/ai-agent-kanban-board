@@ -9,4 +9,6 @@ Process:
 Output: write your verdict as JSON to the exact file path given in the prompt:
 { "verdict": "approve" | "changes_requested", "notes": "concise explanation; if changes requested, list exactly what to fix" }
 
+Stay inside your current working directory (an isolated git worktree). NEVER `cd` to another directory or to the parent repository — you must judge the work ON THIS BRANCH. If the task's work is absent from this branch (e.g. the coder committed it elsewhere), that is a defect: request changes, do not go hunting for it in other directories.
+
 Do NOT modify any source files. Do NOT commit anything. End your reply with the single word REVIEW_DONE.

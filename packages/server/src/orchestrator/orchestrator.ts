@@ -659,7 +659,7 @@ ${opts.task.acceptanceCriteria.map((c) => `- ${c}`).join('\n') || '- (none)'}
     project: Project,
     task: Task,
     artifactsDir: string,
-    prep: { branch: string; mergeConflict: boolean },
+    prep: { cwd: string; branch: string; mergeConflict: boolean },
   ): string {
     const criteria = task.acceptanceCriteria.length
       ? task.acceptanceCriteria.map((c) => `- ${c}`).join('\n')
@@ -708,7 +708,9 @@ ${bounceContext}${retryContext}${
     }
 ## Working agreement
 - You are working in an ISOLATED git worktree on branch: ${prep.branch} (already checked out — stay on it; other tasks run in parallel on their own branches and your work is merged automatically when done)
-- Work only inside this worktree. Prefer touching only the files this task is about — parallel tasks are merged with git.
+- Your worktree (your ONLY working directory): ${prep.cwd}
+- Do ALL work — files, installs, builds, and every git command — inside that worktree. NEVER \`cd\` out of it. In particular NEVER touch the parent repository at ${project.targetRepoPath} — that is the user's checkout holding the \`main\` branch; committing there breaks everything. Your worktree shares its git history with that repo, so a stray \`cd\` + \`git commit\` would land on \`main\`.
+- Prefer touching only the files this task is about — parallel tasks are merged with git.
 - Commit message format: task(${task.planStepId ?? task.id}): <what you did>
 - You may write progress notes to: ${artifactsDir}
 

@@ -138,6 +138,14 @@ export async function pruneWorktrees(repoPath: string): Promise<void> {
 }
 
 /** The repo's default branch — main/master if present, else the current one. */
+/** The repo's current HEAD commit sha, or null if it has no commits yet. */
+export async function headCommit(repoPath: string): Promise<string | null> {
+  return simpleGit(repoPath)
+    .raw(['rev-parse', 'HEAD'])
+    .then((s) => s.trim() || null)
+    .catch(() => null);
+}
+
 export async function defaultBranch(repoPath: string): Promise<string> {
   const git = simpleGit(repoPath);
   const locals = await git.branchLocal();
@@ -180,26 +188,40 @@ export async function mergeBranchInto(
  * every agent change is gone. Then delete the project's agent/task branches and
  * prune its worktrees. For existing repos, history is left intact.
  */
+/**
+ * Hard-reset a project's repo back to its starting point: check out the default
+ * branch, move it back to `baseCommit` (the repo's HEAD when the project was
+ * created), blow away every change agents made — including ignored build output
+ * like node_modules/.next — and delete the project's agent branches.
+ *
+ * `baseCommit` is the authoritative anchor; when it's missing (older projects)
+ * we fall back to the repo's root commit for repos we created, else leave the
+ * branch where it is.
+ */
 export async function resetProjectRepo(
   repoPath: string,
   target: string,
   branchPrefix: string,
+  baseCommit: string | null,
   wipeToRoot: boolean,
 ): Promise<void> {
   const git = simpleGit(repoPath);
   await git.raw(['worktree', 'prune']).catch(() => {});
   await git.raw(['checkout', '-f', target]).catch(() => {});
-  if (wipeToRoot) {
-    const root = (await git.raw(['rev-list', '--max-parents=0', 'HEAD']).catch(() => ''))
+
+  let resetTo = baseCommit;
+  if (!resetTo && wipeToRoot) {
+    resetTo = (await git.raw(['rev-list', '--max-parents=0', 'HEAD']).catch(() => ''))
       .trim()
       .split('\n')
       .filter(Boolean)
-      .pop();
-    if (root) await git.raw(['reset', '--hard', root]).catch(() => {});
-  } else {
-    await git.raw(['reset', '--hard', 'HEAD']).catch(() => {});
+      .pop() ?? null;
   }
-  await git.raw(['clean', '-fd']).catch(() => {});
+  await git.raw(['reset', '--hard', resetTo ?? 'HEAD']).catch(() => {});
+  // -x also removes ignored files (node_modules, .next, build output) so the
+  // directory returns to its pristine starting state, not just tracked files.
+  await git.raw(['clean', '-fdx']).catch(() => {});
+
   const locals = await git.branchLocal().catch(() => ({ all: [] as string[] }));
   for (const b of locals.all) {
     if (b !== target && b.startsWith(branchPrefix)) {

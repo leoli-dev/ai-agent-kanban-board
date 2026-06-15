@@ -151,6 +151,7 @@ CREATE TABLE IF NOT EXISTS settings (
   addColumnIfMissing(sqlite, 'projects', 'fresh_repo', 'INTEGER NOT NULL DEFAULT 0');
   addColumnIfMissing(sqlite, 'projects', 'live_url', 'TEXT');
   addColumnIfMissing(sqlite, 'projects', 'run_pid', 'INTEGER');
+  addColumnIfMissing(sqlite, 'projects', 'base_commit', 'TEXT');
 }
 
 /** SQLite has no `ADD COLUMN IF NOT EXISTS`; check the table shape first. */
