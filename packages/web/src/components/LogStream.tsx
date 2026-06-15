@@ -60,6 +60,44 @@ function renderEvent(obj: Record<string, unknown>, key: string): LogLine {
       .join('');
     return { key, kind: 'text', text };
   }
+
+  // Codex (`codex exec --json`) JSONL shapes — its log lines look nothing like
+  // claude-code's, so without this the whole codex run renders blank.
+  if (type === 'thread.started') return { key, kind: 'meta', text: '● session started' };
+  if (type === 'item.completed') {
+    const item = obj.item as
+      | { type?: string; text?: string; command?: string; changes?: { path?: string; kind?: string }[] }
+      | undefined;
+    if (item?.type === 'agent_message' && item.text) return { key, kind: 'text', text: item.text };
+    if (item?.type === 'command_execution') {
+      const cmd = (item.command ?? '').replace(/\s+/g, ' ').slice(0, 300);
+      return { key, kind: 'tool', text: `⚙ shell${cmd ? ` · ${cmd}` : ''}` };
+    }
+    if (item?.type === 'file_change') {
+      const files = (item.changes ?? [])
+        .map((c) => `${c.kind ?? 'edit'} ${(c.path ?? '').split('/').pop()}`)
+        .join(', ');
+      return { key, kind: 'tool', text: `✎ ${files || 'file change'}` };
+    }
+    return { key, kind: 'raw', text: '' };
+  }
+  if (type === 'turn.failed' || type === 'error') {
+    const err = obj.error as { message?: string } | undefined;
+    return {
+      key,
+      kind: 'result',
+      text: `■ result (error): ${err?.message ?? String(obj.message ?? 'codex run failed')}`,
+    };
+  }
+  // Legacy codex {id, msg:{...}} shape.
+  const legacy = obj.msg as { type?: string; message?: string; last_agent_message?: string } | undefined;
+  if (legacy?.type) {
+    if (legacy.type === 'agent_message' && legacy.message)
+      return { key, kind: 'text', text: legacy.message };
+    if (legacy.type === 'error')
+      return { key, kind: 'result', text: `■ result (error): ${legacy.message ?? 'codex error'}` };
+    return { key, kind: 'raw', text: '' };
+  }
   return { key, kind: 'raw', text: '' };
 }
 
