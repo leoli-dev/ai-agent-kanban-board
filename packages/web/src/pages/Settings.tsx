@@ -303,11 +303,13 @@ function ProvidersSection() {
       {draft && !draft.id && draftForm}
 
       <ul className="mt-2 space-y-2">
-        {providers.map((p) => {
+        {[...providers]
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+          .map((p) => {
           const result = testResult[p.id];
           return (
             <li key={p.id} className="card p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink-100">
                     {p.name}
@@ -355,7 +357,7 @@ function ProvidersSection() {
                     </p>
                   )}
                 </div>
-                <div className="flex shrink-0 gap-1.5">
+                <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
                   <button
                     onClick={() => setUsageOpen((s) => ({ ...s, [p.id]: !s[p.id] }))}
                     title={t('usage.hint')}
