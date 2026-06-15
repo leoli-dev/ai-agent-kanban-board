@@ -69,6 +69,12 @@ export interface Project {
   workspacePath: string;
   targetRepoPath: string;
   gitBranch: string | null;
+  /** True when we created the repo from scratch — only these auto-merge to main. */
+  freshRepo: boolean;
+  /** URL of the live preview the server hosts for a finished project. */
+  liveUrl: string | null;
+  /** PID of the hosted preview process. */
+  runPid: number | null;
   createdAt: number;
   completedAt: number | null;
 }

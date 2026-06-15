@@ -9,7 +9,7 @@ import type { InputKind } from '@akb/shared';
 import { schema } from '../db/index.js';
 import { toPlanDocument, toProject, toProjectInput } from '../db/mappers.js';
 import type { AppContext } from '../context.js';
-import { initRepoWithBaseline, pruneWorktrees } from '../workspace/git.js';
+import { initRepoWithBaseline, isGitRepo, pruneWorktrees } from '../workspace/git.js';
 import { scaffoldWorkspace, slugify, workspacePaths } from '../workspace/workspace.js';
 
 const CreateProjectBody = z.object({
@@ -118,6 +118,10 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     const id = nanoid(10);
     const name = body.name?.trim() || repoName;
 
+    // "Fresh" = we are creating the git repo; only these get auto-merged into
+    // the default branch on completion (existing repos are never auto-touched).
+    const freshRepo = !isGitRepo(repoPath);
+
     // New projects often start from nothing: create the folder and init git
     // (with a baseline commit) instead of rejecting.
     try {
@@ -138,6 +142,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
         workspacePath: paths.root,
         targetRepoPath: repoPath,
         gitBranch: `agent/${slugify(name)}-${id.slice(0, 4).toLowerCase()}`,
+        freshRepo: freshRepo ? 1 : 0,
         createdAt: Date.now(),
       })
       .run();
@@ -220,10 +225,30 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     return project;
   });
 
+  /** Start (or restart) the hosted live preview for a finished project. */
+  app.post('/api/projects/:id/run', async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const row = ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get();
+    if (!row) return reply.code(404).send({ error: 'project not found' });
+    void ctx.projectRunner.start(toProject(row)).catch(() => {});
+    reply.code(202);
+    return { ok: true };
+  });
+
+  /** Stop the hosted live preview. */
+  app.post('/api/projects/:id/run/stop', async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const row = ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get();
+    if (!row) return reply.code(404).send({ error: 'project not found' });
+    ctx.projectRunner.stop(id);
+    return { ok: true };
+  });
+
   app.delete('/api/projects/:id', async (req, reply) => {
     const id = (req.params as { id: string }).id;
     const row = ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get();
     if (!row) return reply.code(404).send({ error: 'project not found' });
+    ctx.projectRunner.stop(id);
     for (const run of ctx.runStore.listByProject(id)) {
       if (run.status === 'running') ctx.runner.kill(run.id);
     }

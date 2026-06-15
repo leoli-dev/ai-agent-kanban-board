@@ -94,6 +94,14 @@ export default function ProjectDetail() {
     mutationFn: () => api.delete(`/api/projects/${projectId}`),
     onSuccess: () => navigate('/projects'),
   });
+  const startRun = useMutation({
+    mutationFn: () => api.post(`/api/projects/${projectId}/run`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['project', projectId] }),
+  });
+  const stopRun = useMutation({
+    mutationFn: () => api.post(`/api/projects/${projectId}/run/stop`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['project', projectId] }),
+  });
 
   if (isLoading) return <Loading />;
   if (isError || !project) return <LoadError error={error} onRetry={refetch} />;
@@ -172,6 +180,16 @@ export default function ProjectDetail() {
         </button>
       </div>
 
+
+      {project.status === 'done' && (
+        <LivePreview
+          project={project}
+          onStart={() => startRun.mutate()}
+          onStop={() => stopRun.mutate()}
+          busy={startRun.isPending || stopRun.isPending}
+          t={t}
+        />
+      )}
 
       <section className="card p-4">
         <h2 className="mb-2 text-sm font-semibold text-ink-300">{t('project.idea')}</h2>
@@ -312,6 +330,77 @@ function CollapsibleCard({
         {action}
       </div>
       {open && <div className="mt-3">{children}</div>}
+    </section>
+  );
+}
+
+/** Hosted live-preview status for a finished project: URL + open/stop, or start. */
+function LivePreview({
+  project,
+  onStart,
+  onStop,
+  busy,
+  t,
+}: {
+  project: Project & { runPid?: number | null; liveUrl?: string | null };
+  onStart: () => void;
+  onStop: () => void;
+  busy: boolean;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+}) {
+  const running = !!project.runPid;
+  const url = project.liveUrl ?? null;
+
+  if (url) {
+    return (
+      <section className="card rise-in flex flex-wrap items-center gap-3 border-teal-500/40 p-4">
+        <span className="flex items-center gap-2 text-sm font-semibold text-teal-300">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-teal-400" />
+          {t('project.livePreview')}
+        </span>
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="font-mono text-sm text-teal-200 underline decoration-teal-500/50 hover:text-teal-100"
+        >
+          {url}
+        </a>
+        <div className="ml-auto flex gap-2">
+          <a href={url} target="_blank" rel="noreferrer" className="btn btn-primary px-3.5 py-1.5 text-xs">
+            {t('project.openPreview')}
+          </a>
+          <button onClick={onStop} disabled={busy} className="btn btn-ghost px-3.5 py-1.5 text-xs">
+            ⏹ {t('project.stopPreview')}
+          </button>
+        </div>
+        {project.runPid && (
+          <p className="w-full text-[11px] text-ink-500">
+            {t('project.previewPid', { pid: project.runPid })}
+          </p>
+        )}
+      </section>
+    );
+  }
+
+  if (running) {
+    return (
+      <section className="card flex items-center gap-2 border-ink-700 p-4 text-sm text-ink-300">
+        <span className="h-3 w-3 animate-spin rounded-full border border-ink-600 border-t-teal-400" />
+        {t('project.previewStarting')}
+        <button onClick={onStop} disabled={busy} className="btn btn-ghost ml-auto px-3 py-1 text-xs">
+          {t('project.stopPreview')}
+        </button>
+      </section>
+    );
+  }
+
+  return (
+    <section className="card flex flex-wrap items-center justify-between gap-2 border-ink-800 p-4">
+      <span className="text-sm text-ink-400">{t('project.previewIdle')}</span>
+      <button onClick={onStart} disabled={busy} className="btn btn-primary px-3.5 py-1.5 text-xs">
+        ▶ {t('project.startPreview')}
+      </button>
     </section>
   );
 }

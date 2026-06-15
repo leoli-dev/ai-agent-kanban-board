@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS projects (
   workspace_path TEXT NOT NULL,
   target_repo_path TEXT NOT NULL,
   git_branch TEXT,
+  fresh_repo INTEGER NOT NULL DEFAULT 0,
+  live_url TEXT,
+  run_pid INTEGER,
   created_at INTEGER NOT NULL,
   completed_at INTEGER
 );
@@ -145,6 +148,9 @@ CREATE TABLE IF NOT EXISTS settings (
 
   // Additive column migrations for databases created before the column existed.
   addColumnIfMissing(sqlite, 'provider_profiles', 'tier', "TEXT NOT NULL DEFAULT 'low'");
+  addColumnIfMissing(sqlite, 'projects', 'fresh_repo', 'INTEGER NOT NULL DEFAULT 0');
+  addColumnIfMissing(sqlite, 'projects', 'live_url', 'TEXT');
+  addColumnIfMissing(sqlite, 'projects', 'run_pid', 'INTEGER');
 }
 
 /** SQLite has no `ADD COLUMN IF NOT EXISTS`; check the table shape first. */

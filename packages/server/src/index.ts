@@ -11,6 +11,7 @@ import { SecretStore } from './providers/secrets.js';
 import { ProviderRegistry } from './providers/registry.js';
 import { RunStore } from './runner/run-store.js';
 import { AgentRunner } from './runner/agent-runner.js';
+import { ProjectRunner } from './runner/project-runner.js';
 import { PlannerService } from './agents/planner.js';
 import { Notifier } from './notify/notifier.js';
 import { Orchestrator } from './orchestrator/orchestrator.js';
@@ -34,10 +35,12 @@ async function main(): Promise<void> {
   const planner = new PlannerService({ db, hub, runner, settings, workspacesDir: WORKSPACES_DIR });
   const notifier = new Notifier(db, hub, settings);
   const reports = new ReportService({ db, runStore, registry, runner, workspacesDir: WORKSPACES_DIR });
+  const projectRunner = new ProjectRunner({ db, hub, workspacesDir: WORKSPACES_DIR });
   const orchestrator = new Orchestrator({
     db,
     hub,
     runner,
+    projectRunner,
     settings,
     notifier,
     registry,
@@ -63,6 +66,7 @@ async function main(): Promise<void> {
     registry,
     runStore,
     runner,
+    projectRunner,
     planner,
     notifier,
     orchestrator,
@@ -101,6 +105,14 @@ async function main(): Promise<void> {
   }
 
   orchestrator.start();
+
+  // Don't leave hosted preview processes orphaned when the server exits.
+  for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+    process.once(sig, () => {
+      projectRunner.stopAll();
+      process.exit(0);
+    });
+  }
 
   await app.listen({ port: PORT, host: HOST });
   app.log.info(`agent-kanban-board listening on http://${HOST}:${PORT}`);

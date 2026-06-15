@@ -137,6 +137,42 @@ export async function pruneWorktrees(repoPath: string): Promise<void> {
     .catch(() => {});
 }
 
+/** The repo's default branch — main/master if present, else the current one. */
+export async function defaultBranch(repoPath: string): Promise<string> {
+  const git = simpleGit(repoPath);
+  const locals = await git.branchLocal();
+  return (
+    ['main', 'master'].find((b) => locals.all.includes(b)) ??
+    locals.current ??
+    'main'
+  );
+}
+
+/**
+ * Check out `target` in the repo's own working tree and merge `source` into it.
+ * Used to land a finished fresh project's agent branch on main. Returns 'ok',
+ * 'conflict' (merge aborted), or 'error' (e.g. dirty tree blocked checkout).
+ */
+export async function mergeBranchInto(
+  repoPath: string,
+  target: string,
+  source: string,
+): Promise<'ok' | 'conflict' | 'error'> {
+  const git = simpleGit(repoPath);
+  try {
+    await git.checkout(target);
+  } catch {
+    return 'error';
+  }
+  try {
+    await git.raw(['merge', '--no-ff', '-m', `Merge ${source} into ${target}`, source]);
+    return 'ok';
+  } catch {
+    await git.raw(['merge', '--abort']).catch(() => {});
+    return 'conflict';
+  }
+}
+
 export async function deleteBranch(repoPath: string, branch: string): Promise<void> {
   await simpleGit(repoPath)
     .raw(['branch', '-D', branch])

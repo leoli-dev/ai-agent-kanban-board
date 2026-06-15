@@ -29,6 +29,9 @@ export function toProject(r: Row<typeof schema.projects>): Project {
     workspacePath: r.workspacePath,
     targetRepoPath: r.targetRepoPath,
     gitBranch: r.gitBranch,
+    freshRepo: r.freshRepo === 1,
+    liveUrl: r.liveUrl,
+    runPid: r.runPid,
     createdAt: r.createdAt,
     completedAt: r.completedAt,
   };

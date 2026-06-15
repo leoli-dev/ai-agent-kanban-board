@@ -8,6 +8,7 @@ import { schema } from '../src/db/index.js';
 import { Notifier } from '../src/notify/notifier.js';
 import { Orchestrator } from '../src/orchestrator/orchestrator.js';
 import { ReportService } from '../src/reports/report-service.js';
+import { ProjectRunner } from '../src/runner/project-runner.js';
 import { updateTask } from '../src/db/task-store.js';
 import { scaffoldWorkspace } from '../src/workspace/workspace.js';
 import { addMockProfile, makeTestCtx, scripts, type MockScript, type TestCtx } from './helpers.js';
@@ -81,10 +82,12 @@ function makeFixture(
     runner: ctx.runner,
     workspacesDir: ctx.tmpDir,
   });
+  const projectRunner = new ProjectRunner({ db: ctx.db, hub: ctx.hub, workspacesDir: ctx.tmpDir });
   const orchestrator = new Orchestrator({
     db: ctx.db,
     hub: ctx.hub,
     runner: ctx.runner,
+    projectRunner,
     settings: ctx.settings,
     notifier,
     registry: ctx.registry,

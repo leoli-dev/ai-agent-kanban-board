@@ -8,6 +8,13 @@ export const projects = sqliteTable('projects', {
   workspacePath: text('workspace_path').notNull(),
   targetRepoPath: text('target_repo_path').notNull(),
   gitBranch: text('git_branch'),
+  /** 1 when we created the repo from scratch (no pre-existing git) — only these
+   * are auto-merged into the default branch on completion. */
+  freshRepo: integer('fresh_repo').notNull().default(0),
+  /** URL of the live preview the server is hosting for a finished project. */
+  liveUrl: text('live_url'),
+  /** PID of the hosted preview process (for stopping it). */
+  runPid: integer('run_pid'),
   createdAt: integer('created_at').notNull(),
   completedAt: integer('completed_at'),
 });

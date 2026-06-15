@@ -11,16 +11,19 @@ import { toProject } from '../db/mappers.js';
 import { getTask, listProjectTasks, updateTask } from '../db/task-store.js';
 import type { SettingsStore } from '../db/settings-store.js';
 import type { AgentRunner } from '../runner/agent-runner.js';
+import type { ProjectRunner } from '../runner/project-runner.js';
 import type { Notifier } from '../notify/notifier.js';
 import type { ReportService } from '../reports/report-service.js';
 import type { WsHub } from '../ws/hub.js';
 import {
   commitAll,
+  defaultBranch,
   deleteBranch,
   discardUncommitted,
   ensureNotOnBranch,
   ensureWorktree,
   mergeBaseLeaveConflicts,
+  mergeBranchInto,
   mergeIntoCurrent,
   removeWorktree,
 } from '../workspace/git.js';
@@ -54,6 +57,7 @@ interface OrchestratorDeps {
   db: Db;
   hub: WsHub;
   runner: AgentRunner;
+  projectRunner: ProjectRunner;
   settings: SettingsStore;
   notifier: Notifier;
   registry: ProviderRegistry;
@@ -734,18 +738,43 @@ Begin.`;
   }
 
   /**
-   * Post-completion housekeeping: the integration worktree held the agent
-   * branch checked out for merging during the run. Now that the project is
-   * done, remove it so the branch is free for the user to `git checkout`
-   * (the value the completion report documents). Then build the report.
+   * Post-completion housekeeping. Remove the integration worktree that held the
+   * agent branch (freeing it), then for repos we created merge the agent branch
+   * straight into the default branch so the result lands on main with no manual
+   * checkout. Finally start a hosted live preview and build the report.
    */
   private async finalizeProject(project: Project): Promise<void> {
     const integration = this.integrationDir(project);
     if (fs.existsSync(integration)) {
       await removeWorktree(project.targetRepoPath, integration).catch(() => {});
     }
+
+    let merged = project;
+    if (project.freshRepo && project.gitBranch) {
+      const target = await defaultBranch(project.targetRepoPath).catch(() => 'main');
+      const result = await mergeBranchInto(
+        project.targetRepoPath,
+        target,
+        project.gitBranch,
+      ).catch(() => 'error' as const);
+      if (result === 'ok') {
+        this.deps.db
+          .update(schema.projects)
+          .set({ gitBranch: target })
+          .where(eq(schema.projects.id, project.id))
+          .run();
+        merged = { ...project, gitBranch: target };
+        this.deps.hub.publish('global', { type: 'project.updated', project: merged });
+      }
+      // conflict/error: leave the work on the agent branch; the report still
+      // documents how to check it out.
+    }
+
+    // Host a live preview (best-effort; updates project.liveUrl when ready).
+    void this.deps.projectRunner.start(merged).catch(() => {});
+
     try {
-      this.deps.reports.ensure(project);
+      this.deps.reports.ensure(merged);
     } catch {
       /* report regenerates on first view */
     }

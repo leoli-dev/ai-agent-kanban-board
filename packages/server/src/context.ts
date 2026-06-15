@@ -6,6 +6,7 @@ import type { SecretStore } from './providers/secrets.js';
 import type { ProviderRegistry } from './providers/registry.js';
 import type { RunStore } from './runner/run-store.js';
 import type { AgentRunner } from './runner/agent-runner.js';
+import type { ProjectRunner } from './runner/project-runner.js';
 import type { PlannerService } from './agents/planner.js';
 import type { Notifier } from './notify/notifier.js';
 import type { Orchestrator } from './orchestrator/orchestrator.js';
@@ -26,6 +27,7 @@ export interface AppContext {
   registry: ProviderRegistry;
   runStore: RunStore;
   runner: AgentRunner;
+  projectRunner: ProjectRunner;
   planner: PlannerService;
   notifier: Notifier;
   orchestrator: Orchestrator;

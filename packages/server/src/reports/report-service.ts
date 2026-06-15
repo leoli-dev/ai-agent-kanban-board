@@ -83,13 +83,21 @@ export class ReportService {
       })
       .join('\n\n');
 
-    return `# 项目完成报告 · Project Report
+    const mergedToMain =
+      project.freshRepo && ['main', 'master'].includes(project.gitBranch ?? '');
+    const whereItLives = mergedToMain
+      ? `## 📦 成果在哪里 / Where the result lives
 
-**${project.name}**
+- 仓库 repo: \`${project.targetRepoPath}\`
+- 已合并进 \`${project.gitBranch}\` 分支，无需手动切换 / merged into \`${project.gitBranch}\` — no checkout needed.
 
-完成于 / completed: ${project.completedAt ? new Date(project.completedAt).toLocaleString() : '—'} · 历时 / duration: ${durationH}h
+\`\`\`bash
+cd ${project.targetRepoPath}
+\`\`\`
 
-## 📦 成果在哪里 / Where the result lives
+🟢 实时预览 / Live preview: 见上方项目页的预览链接，点击即可在浏览器查看正在运行的服务。
+停止预览 / To stop it: 在项目页点「停止预览 / Stop preview」按钮（或 \`kill <PID>\`，PID 显示在项目页）。`
+      : `## 📦 成果在哪里 / Where the result lives
 
 - 仓库 repo: \`${project.targetRepoPath}\`
 - 分支 branch: \`${project.gitBranch}\`
@@ -105,7 +113,15 @@ git checkout ${project.gitBranch}
 
 \`\`\`bash
 git checkout main && git merge ${project.gitBranch}
-\`\`\`
+\`\`\``;
+
+    return `# 项目完成报告 · Project Report
+
+**${project.name}**
+
+完成于 / completed: ${project.completedAt ? new Date(project.completedAt).toLocaleString() : '—'} · 历时 / duration: ${durationH}h
+
+${whereItLives}
 
 ## 🚀 做了什么 · 如何运行 / What was built · How to run
 
