@@ -309,113 +309,115 @@ function ProvidersSection() {
           const result = testResult[p.id];
           return (
             <li key={p.id} className="card p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink-100">
-                    {p.name}
-                    <span className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-[10px] text-ink-400">
-                      {p.engine}
-                    </span>
-                    {p.modelLabel && (
-                      <span className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-[10px] text-ink-400">
-                        {p.modelLabel}
-                      </span>
-                    )}
-                  </p>
-                  <div className="mt-1.5 flex items-center gap-1.5">
-                    <span className="text-[10px] uppercase tracking-wide text-ink-500">
-                      {t('settings.provider.tier')}
-                    </span>
-                    <div className="flex gap-0.5 rounded-md bg-ink-950 p-0.5">
-                      {MODEL_TIERS.map((tier) => (
-                        <button
-                          key={tier}
-                          type="button"
-                          onClick={() => setTier.mutate({ id: p.id, tier })}
-                          className={`rounded px-2 py-0.5 text-[11px] transition-colors ${
-                            (p.tier ?? 'low') === tier
-                              ? 'bg-accent-400 font-medium text-ink-950'
-                              : 'text-ink-400 hover:text-ink-200'
-                          }`}
-                        >
-                          {t(`settings.provider.tier.${tier}`)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {!p.enabled && (
-                    <p className="mt-0.5 text-xs text-red-400">
-                      {t('settings.provider.disabled')}
-                      {p.disabledReason ? ` — ${p.disabledReason}` : ''}
-                    </p>
+              {/* Row 1: name + tags + intelligence tier */}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                <span className="text-sm font-medium text-ink-100">{p.name}</span>
+                <span className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-[10px] text-ink-400">
+                  {p.engine}
+                </span>
+                {p.modelLabel && (
+                  <span className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-[10px] text-ink-400">
+                    {p.modelLabel}
+                  </span>
+                )}
+                <span className="ml-1 flex items-center gap-1.5">
+                  <span className="text-[10px] uppercase tracking-wide text-ink-500">
+                    {t('settings.provider.tier')}
+                  </span>
+                  <span className="flex gap-0.5 rounded-md bg-ink-950 p-0.5">
+                    {MODEL_TIERS.map((tier) => (
+                      <button
+                        key={tier}
+                        type="button"
+                        onClick={() => setTier.mutate({ id: p.id, tier })}
+                        className={`rounded px-2 py-0.5 text-[11px] transition-colors ${
+                          (p.tier ?? 'low') === tier
+                            ? 'bg-accent-400 font-medium text-ink-950'
+                            : 'text-ink-400 hover:text-ink-200'
+                        }`}
+                      >
+                        {t(`settings.provider.tier.${tier}`)}
+                      </button>
+                    ))}
+                  </span>
+                </span>
+              </div>
+              {!p.enabled && (
+                <p className="mt-1.5 text-xs text-red-400">
+                  {t('settings.provider.disabled')}
+                  {p.disabledReason ? ` — ${p.disabledReason}` : ''}
+                </p>
+              )}
+              {p.enabled && p.cooldownUntil && p.cooldownUntil > Date.now() && (
+                <p className="mt-1.5 text-xs text-accent-300">
+                  {t('settings.provider.cooldown', {
+                    time: new Date(p.cooldownUntil).toLocaleTimeString(),
+                  })}
+                </p>
+              )}
+
+              {/* Row 2: actions */}
+              <div className="mt-3 flex flex-wrap gap-2 border-t border-ink-800 pt-3">
+                <button
+                  onClick={() => setUsageOpen((s) => ({ ...s, [p.id]: !s[p.id] }))}
+                  title={t('usage.hint')}
+                  className={`btn px-3.5 py-1.5 text-sm ${usageOpen[p.id] ? 'btn-primary' : 'btn-ghost'}`}
+                >
+                  {t('usage.button')}
+                </button>
+                <button
+                  onClick={() => runTest(p.id)}
+                  disabled={result === 'pending'}
+                  title={t('settings.provider.testHint')}
+                  className="btn btn-ghost px-3.5 py-1.5 text-sm"
+                >
+                  {result === 'pending' ? (
+                    <>
+                      <span className="h-3.5 w-3.5 animate-spin rounded-full border border-ink-500 border-t-accent-400" />
+                      {t('common.testing')}
+                    </>
+                  ) : (
+                    t('common.test')
                   )}
-                  {p.enabled && p.cooldownUntil && p.cooldownUntil > Date.now() && (
-                    <p className="mt-0.5 text-xs text-accent-300">
-                      {t('settings.provider.cooldown', {
-                        time: new Date(p.cooldownUntil).toLocaleTimeString(),
-                      })}
-                    </p>
-                  )}
-                </div>
-                <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
-                  <button
-                    onClick={() => setUsageOpen((s) => ({ ...s, [p.id]: !s[p.id] }))}
-                    title={t('usage.hint')}
-                    className={`btn px-2.5 py-1 text-xs ${usageOpen[p.id] ? 'btn-primary' : 'btn-ghost'}`}
-                  >
-                    {t('usage.button')}
-                  </button>
-                  <button
-                    onClick={() => runTest(p.id)}
-                    disabled={result === 'pending'}
-                    title={t('settings.provider.testHint')}
-                    className="btn btn-ghost px-2.5 py-1 text-xs"
-                  >
-                    {result === 'pending' ? (
-                      <>
-                        <span className="h-3 w-3 animate-spin rounded-full border border-ink-500 border-t-accent-400" />
-                        {t('common.testing')}
-                      </>
-                    ) : (
-                      t('common.test')
-                    )}
-                  </button>
-                  <button
-                    onClick={() =>
-                      setDraft({
-                        id: p.id,
-                        name: p.name,
-                        engine: p.engine,
-                        modelLabel: p.modelLabel ?? '',
-                        env: Object.entries(p.env).map(([key, value]) => ({ key, value })),
-                        notes: p.notes ?? '',
-                      })
-                    }
-                    className="btn btn-ghost px-2.5 py-1 text-xs"
-                  >
-                    {t('common.edit')}
-                  </button>
-                  <button
-                    onClick={() => duplicate.mutate(p)}
-                    disabled={duplicate.isPending}
-                    title={t('settings.provider.duplicateHint')}
-                    className="btn btn-ghost px-2.5 py-1 text-xs"
-                  >
-                    {t('common.duplicate')}
-                  </button>
-                  <button onClick={() => toggle.mutate(p)} className="btn btn-ghost px-2.5 py-1 text-xs">
-                    {p.enabled ? t('common.disable') : t('common.enable')}
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (confirm(t('settings.provider.deleteConfirm', { name: p.name })))
-                        remove.mutate(p.id);
-                    }}
-                    className="btn btn-danger px-2 py-1 text-xs"
-                  >
-                    <IconX width={12} height={12} />
-                  </button>
-                </div>
+                </button>
+                <button
+                  onClick={() =>
+                    setDraft({
+                      id: p.id,
+                      name: p.name,
+                      engine: p.engine,
+                      modelLabel: p.modelLabel ?? '',
+                      env: Object.entries(p.env).map(([key, value]) => ({ key, value })),
+                      notes: p.notes ?? '',
+                    })
+                  }
+                  className="btn btn-ghost px-3.5 py-1.5 text-sm"
+                >
+                  {t('common.edit')}
+                </button>
+                <button
+                  onClick={() => duplicate.mutate(p)}
+                  disabled={duplicate.isPending}
+                  title={t('settings.provider.duplicateHint')}
+                  className="btn btn-ghost px-3.5 py-1.5 text-sm"
+                >
+                  {t('common.duplicate')}
+                </button>
+                <button
+                  onClick={() => toggle.mutate(p)}
+                  className="btn btn-ghost px-3.5 py-1.5 text-sm"
+                >
+                  {p.enabled ? t('common.disable') : t('common.enable')}
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm(t('settings.provider.deleteConfirm', { name: p.name })))
+                      remove.mutate(p.id);
+                  }}
+                  className="btn btn-danger ml-auto px-3.5 py-1.5 text-sm"
+                >
+                  <IconX width={13} height={13} />
+                </button>
               </div>
               {result && result !== 'pending' && (
                 <p
