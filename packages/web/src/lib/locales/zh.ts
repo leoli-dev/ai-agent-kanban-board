@@ -139,6 +139,12 @@ export const zh: Record<string, string> = {
   'project.restartConfirmTitle': '从头重启此项目？',
   'project.restartConfirmBody':
     '所有任务归零、整个计划从头重新执行。目标目录里 agent 做过的全部改动都会被丢弃（本工具创建的仓库会回退到最初的提交）。此操作不可撤销。',
+  'project.reset': '完全重新开始',
+  'project.resetting': '重置中…',
+  'project.resetConfirm': '确定，删除计划并重来',
+  'project.resetConfirmTitle': '完全重新开始？连计划一起删除',
+  'project.resetConfirmBody':
+    '比"重启"更彻底：除了清空所有任务和代码改动，还会删除整份计划、所有任务和 planner 对话记录，项目回到"还没出计划"的状态，需要重新从 planner 开始。你最初填写的想法、链接和上传的资料会保留。此操作不可撤销。',
   'project.livePreview': '实时预览',
   'project.openPreview': '打开',
   'project.stopPreview': '停止预览',

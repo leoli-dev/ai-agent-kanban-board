@@ -139,6 +139,12 @@ export const en: Record<string, string> = {
   'project.restartConfirmTitle': 'Restart this project from scratch?',
   'project.restartConfirmBody':
     'Every task resets to the start and the whole plan re-runs from zero. ALL changes the agents made in the target folder are discarded (for repos created here, back to the initial commit). This cannot be undone.',
+  'project.reset': 'Start over',
+  'project.resetting': 'Resetting…',
+  'project.resetConfirm': 'Yes, delete the plan & start over',
+  'project.resetConfirmTitle': 'Start over completely — delete the plan too?',
+  'project.resetConfirmBody':
+    'Goes further than Restart: on top of clearing every task and all code changes, this DELETES the entire plan, all tasks, and the planner conversation. The project returns to its pre-plan state, so planning starts over from the planner. Your original idea, links and uploaded resources are kept. This cannot be undone.',
   'project.livePreview': 'Live preview',
   'project.openPreview': 'Open',
   'project.stopPreview': 'Stop preview',

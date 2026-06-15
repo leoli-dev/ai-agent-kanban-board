@@ -20,6 +20,7 @@ export default function ProjectDetail() {
   const [rejectComment, setRejectComment] = useState('');
   const [showReject, setShowReject] = useState(false);
   const [showRestart, setShowRestart] = useState(false);
+  const [showReset, setShowReset] = useState(false);
 
   const { data: project, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['project', projectId],
@@ -115,6 +116,19 @@ export default function ProjectDetail() {
     mutationFn: () => api.post(`/api/projects/${projectId}/run/stop`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['project', projectId] }),
   });
+  const reset = useMutation({
+    mutationFn: () => api.post(`/api/projects/${projectId}/reset`),
+    onSuccess: () => {
+      setShowReset(false);
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['planMd', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['report', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projectRuns', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['taskRuns'] });
+      queryClient.invalidateQueries({ queryKey: ['runLog'] });
+    },
+  });
 
   if (isLoading) return <Loading />;
   if (isError || !project) return <LoadError error={error} onRetry={refetch} />;
@@ -184,11 +198,26 @@ export default function ProjectDetail() {
         )}
         {project.status !== 'draft' && (
           <button
-            onClick={() => setShowRestart((v) => !v)}
+            onClick={() => {
+              setShowReset(false);
+              setShowRestart((v) => !v);
+            }}
             disabled={restart.isPending}
             className="btn btn-ghost ml-auto px-4 py-2 text-sm"
           >
             ↻ {t('project.restart')}
+          </button>
+        )}
+        {project.status !== 'draft' && (
+          <button
+            onClick={() => {
+              setShowRestart(false);
+              setShowReset((v) => !v);
+            }}
+            disabled={reset.isPending}
+            className="btn btn-ghost px-4 py-2 text-sm"
+          >
+            ⟲ {t('project.reset')}
           </button>
         )}
         <button
@@ -226,6 +255,34 @@ export default function ProjectDetail() {
           </div>
           {restart.isError && (
             <p className="mt-2 text-xs text-red-300">{String((restart.error as Error).message)}</p>
+          )}
+        </div>
+      )}
+
+      {showReset && (
+        <div className="card rise-in border-red-900/60 bg-red-950/30 p-4">
+          <p className="text-sm font-semibold text-red-300">{t('project.resetConfirmTitle')}</p>
+          <p className="mt-1.5 text-xs leading-relaxed text-ink-300">
+            {t('project.resetConfirmBody')}
+          </p>
+          <p className="mt-1.5 font-mono text-xs text-ink-500">{project.targetRepoPath}</p>
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={() => reset.mutate()}
+              disabled={reset.isPending}
+              className="btn btn-danger px-3.5 py-1.5 text-xs font-semibold"
+            >
+              {reset.isPending ? t('project.resetting') : t('project.resetConfirm')}
+            </button>
+            <button
+              onClick={() => setShowReset(false)}
+              className="btn btn-ghost px-3.5 py-1.5 text-xs"
+            >
+              {t('common.cancel')}
+            </button>
+          </div>
+          {reset.isError && (
+            <p className="mt-2 text-xs text-red-300">{String((reset.error as Error).message)}</p>
           )}
         </div>
       )}

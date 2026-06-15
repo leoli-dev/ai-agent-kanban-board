@@ -5,7 +5,7 @@ import { desc, eq, inArray, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
-import type { InputKind } from '@akb/shared';
+import type { InputKind, Project } from '@akb/shared';
 import { schema } from '../db/index.js';
 import { toPlanDocument, toProject, toProjectInput, toTask } from '../db/mappers.js';
 import type { AppContext } from '../context.js';
@@ -246,18 +246,13 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
   });
 
   /**
-   * Hard restart: stop everything, wipe the repo back to its starting point
-   * (initial baseline for repos we created), reset every task to backlog, and
-   * re-run the plan from scratch. Destructive — the UI double-confirms.
+   * Shared teardown for restart & full reset: stop the live preview, kill any
+   * in-flight agents, wipe run history + logs/artifacts/qa + worktrees, and
+   * reset the target repo back to the project's starting commit. Returns the
+   * fresh agent branch name. Throws only if the repo reset itself fails.
    */
-  app.post('/api/projects/:id/restart', async (req, reply) => {
-    const id = (req.params as { id: string }).id;
-    const row = ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get();
-    if (!row) return reply.code(404).send({ error: 'project not found' });
-    const project = toProject(row);
-
-    // Stop the live preview and kill any in-flight agents. Best-effort: a
-    // restart must succeed even if a runner is already gone or wedged.
+  async function wipeProjectRuntime(project: Project): Promise<string> {
+    const id = project.id;
     try {
       ctx.projectRunner.stop(id);
     } catch {
@@ -277,7 +272,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     // delete the directories out from under them (avoids EBUSY on fs.rmSync).
     if (killedRun) await new Promise((r) => setTimeout(r, 750));
 
-    // Wipe run history + logs + artifacts so the task pages start clean.
+    // Wipe run history so the task pages start clean.
     const taskIds = ctx.db
       .select({ id: schema.tasks.id })
       .from(schema.tasks)
@@ -289,7 +284,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
       ctx.db.delete(schema.agentRuns).where(inArray(schema.agentRuns.taskId, taskIds)).run();
     }
 
-    // Drop the project's worktrees, logs and artifacts, then wipe the repo.
+    // Drop the project's worktrees, logs, artifacts and qa, then wipe the repo.
     const paths = workspacePaths(ctx.workspacesDir, id);
     for (const dir of [path.join(paths.root, 'worktrees'), paths.logs, paths.artifacts, paths.qa]) {
       try {
@@ -301,20 +296,37 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     fs.mkdirSync(paths.logs, { recursive: true });
     fs.mkdirSync(paths.artifacts, { recursive: true });
     fs.mkdirSync(paths.qa, { recursive: true });
+
     const target = await defaultBranch(project.targetRepoPath).catch(() => 'main');
     const newBranch = `agent/${slugify(project.name)}-${id.slice(0, 4).toLowerCase()}`;
+    await resetProjectRepo(
+      project.targetRepoPath,
+      target,
+      newBranch,
+      project.baseCommit,
+      project.freshRepo,
+    );
+    await pruneWorktrees(project.targetRepoPath).catch(() => {});
+    return newBranch;
+  }
+
+  /**
+   * Hard restart: stop everything, wipe the repo back to its starting point,
+   * and reset every task to backlog so the EXISTING plan re-runs from scratch.
+   * Keeps the plan and tasks. Destructive — the UI double-confirms.
+   */
+  app.post('/api/projects/:id/restart', async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const row = ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get();
+    if (!row) return reply.code(404).send({ error: 'project not found' });
+    const project = toProject(row);
+
+    let newBranch: string;
     try {
-      await resetProjectRepo(
-        project.targetRepoPath,
-        target,
-        newBranch,
-        project.baseCommit,
-        project.freshRepo,
-      );
+      newBranch = await wipeProjectRuntime(project);
     } catch (err) {
       return reply.code(400).send({ error: `could not reset the repository: ${String(err)}` });
     }
-    await pruneWorktrees(project.targetRepoPath).catch(() => {});
 
     // Reset project + every task back to the very beginning. Land in 'paused'
     // (ready, but idle) so the user explicitly clicks Resume to start again —
@@ -351,6 +363,85 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     ctx.hub.publish(`board:${id}`, { type: 'project.updated', project: updated });
     ctx.hub.publish(`board:${id}`, { type: 'tasks.created', projectId: id, tasks });
     // No nudge: the project is paused and waits for the user to Resume.
+    return updated;
+  });
+
+  /**
+   * Full reset: everything restart does, PLUS delete the plan, all tasks, and
+   * the planner conversation, landing the project back in 'draft' — the
+   * pre-plan state, so planning starts over from the original idea. The user's
+   * original inputs (idea, links, uploaded resources) are kept. The UI
+   * double-confirms; even more destructive than restart.
+   */
+  app.post('/api/projects/:id/reset', async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const row = ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get();
+    if (!row) return reply.code(404).send({ error: 'project not found' });
+    const project = toProject(row);
+
+    let newBranch: string;
+    try {
+      newBranch = await wipeProjectRuntime(project);
+    } catch (err) {
+      return reply.code(400).send({ error: `could not reset the repository: ${String(err)}` });
+    }
+
+    // Delete the plan, tasks and planner conversation so the planner re-derives
+    // everything from the original prompt. Keep project_inputs (the idea).
+    const taskIds = ctx.db
+      .select({ id: schema.tasks.id })
+      .from(schema.tasks)
+      .where(eq(schema.tasks.projectId, id))
+      .all()
+      .map((t) => t.id);
+    if (taskIds.length) {
+      ctx.db.delete(schema.taskDependencies).where(inArray(schema.taskDependencies.taskId, taskIds)).run();
+      ctx.db
+        .delete(schema.taskDependencies)
+        .where(inArray(schema.taskDependencies.dependsOnTaskId, taskIds))
+        .run();
+    }
+    ctx.db.delete(schema.tasks).where(eq(schema.tasks.projectId, id)).run();
+    ctx.db.delete(schema.planDocuments).where(eq(schema.planDocuments.projectId, id)).run();
+    const sessionIds = ctx.db
+      .select({ id: schema.plannerSessions.id })
+      .from(schema.plannerSessions)
+      .where(eq(schema.plannerSessions.projectId, id))
+      .all()
+      .map((s) => s.id);
+    if (sessionIds.length) {
+      ctx.db.delete(schema.plannerMessages).where(inArray(schema.plannerMessages.sessionId, sessionIds)).run();
+    }
+    ctx.db.delete(schema.plannerSessions).where(eq(schema.plannerSessions.projectId, id)).run();
+
+    // Clear the on-disk plan files too.
+    const paths = workspacePaths(ctx.workspacesDir, id);
+    try {
+      fs.rmSync(paths.plan, { recursive: true, force: true });
+    } catch {
+      /* best-effort */
+    }
+    fs.mkdirSync(paths.plan, { recursive: true });
+
+    ctx.db
+      .update(schema.projects)
+      .set({
+        status: 'draft',
+        gitBranch: newBranch,
+        liveUrl: null,
+        runPid: null,
+        completedAt: null,
+      })
+      .where(eq(schema.projects.id, id))
+      .run();
+    ctx.reports.invalidate(project);
+
+    const updated = toProject(
+      ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get()!,
+    );
+    ctx.hub.publish('global', { type: 'project.updated', project: updated });
+    ctx.hub.publish(`board:${id}`, { type: 'project.updated', project: updated });
+    ctx.hub.publish(`board:${id}`, { type: 'tasks.created', projectId: id, tasks: [] });
     return updated;
   });
 
