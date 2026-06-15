@@ -6,7 +6,7 @@ import { api } from '../lib/api';
 import { Markdown } from '../components/Markdown';
 import { useWsTopics } from '../lib/ws';
 import { useT } from '../lib/i18n';
-import { formatCost, taskStatusStyle, timeAgo } from '../lib/format';
+import { formatCost, stepNumber, taskStatusStyle, timeAgo } from '../lib/format';
 import { Loading, LoadError } from '../components/QueryState';
 import { LogStream } from '../components/LogStream';
 import { IconArrowLeft, IconBoard, IconRetry, IconStop, IconX } from '../components/icons';
@@ -88,6 +88,9 @@ export default function TaskDetail() {
     <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
       <div>
         <div className="flex flex-wrap items-center gap-2.5">
+          <span className="rounded-md bg-ink-800 px-2 py-1 font-mono text-xs text-ink-400">
+            {t('task.step', { n: stepNumber(task) })}
+          </span>
           <h1 className="text-xl font-semibold leading-tight tracking-tight">{task.title}</h1>
           <span className={`rounded-md px-2.5 py-1 text-xs font-medium ${taskStatusStyle[task.status]}`}>
             {t(`task.${task.status}`)}
@@ -372,7 +375,7 @@ function RunStatusDot({ status }: { status: AgentRun['status'] }) {
         ? 'bg-teal-500'
         : status === 'stuck'
           ? 'bg-orange-500'
-          : status === 'killed'
+          : status === 'killed' || status === 'interrupted'
             ? 'bg-ink-500'
             : 'bg-red-500';
   return <span className={`h-2 w-2 rounded-full ${color}`} />;

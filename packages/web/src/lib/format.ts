@@ -47,6 +47,12 @@ export function formatClock(ts: number): string {
   return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
 }
 
+/** The task's step number in the plan flow — from its plan step id, else its
+ * topological order. Returns just the number as a string. */
+export function stepNumber(task: { planStepId: string | null; orderIndex: number }): string {
+  return task.planStepId?.match(/(\d+)/)?.[1] ?? String(task.orderIndex + 1);
+}
+
 export function formatCost(usd: number | null | undefined): string {
   if (usd == null) return '—';
   return `$${usd.toFixed(usd < 1 ? 3 : 2)}`;

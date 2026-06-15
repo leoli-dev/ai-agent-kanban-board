@@ -60,6 +60,7 @@ export const zh: Record<string, string> = {
   'task.done': '完成',
   'task.failed': '失败',
   'task.blocked': '受阻',
+  'task.step': '步骤 {n}',
 
   // roles
   'role.planner': '规划师',
@@ -132,6 +133,12 @@ export const zh: Record<string, string> = {
   'project.sendBack': '退回给规划师',
   'project.costToDate': '累计花费：{cost}',
   'project.report': '完成报告',
+  'project.restart': '重启',
+  'project.restarting': '重启中…',
+  'project.restartConfirm': '确定，清空并重启',
+  'project.restartConfirmTitle': '从头重启此项目？',
+  'project.restartConfirmBody':
+    '所有任务归零、整个计划从头重新执行。目标目录里 agent 做过的全部改动都会被丢弃（本工具创建的仓库会回退到最初的提交）。此操作不可撤销。',
   'project.livePreview': '实时预览',
   'project.openPreview': '打开',
   'project.stopPreview': '停止预览',

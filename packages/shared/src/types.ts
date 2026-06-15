@@ -43,7 +43,7 @@ export type AgentRole = (typeof AGENT_ROLES)[number];
 export const ENGINES = ['claude-code', 'codex', 'mock'] as const;
 export type EngineId = (typeof ENGINES)[number];
 
-export const RUN_STATUSES = ['running', 'succeeded', 'failed', 'killed', 'stuck'] as const;
+export const RUN_STATUSES = ['running', 'succeeded', 'failed', 'killed', 'stuck', 'interrupted'] as const;
 export type RunStatus = (typeof RUN_STATUSES)[number];
 
 export const FAILURE_CLASSES = ['QUOTA', 'AUTH', 'CRASH', 'TASK_FAIL', 'OK'] as const;

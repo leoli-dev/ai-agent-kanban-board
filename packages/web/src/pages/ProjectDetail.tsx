@@ -6,7 +6,7 @@ import { api } from '../lib/api';
 import { Markdown } from '../components/Markdown';
 import { useWsTopics } from '../lib/ws';
 import { useT } from '../lib/i18n';
-import { formatCost, projectStatusStyle, taskStatusStyle } from '../lib/format';
+import { formatCost, projectStatusStyle, stepNumber, taskStatusStyle } from '../lib/format';
 import { Loading, LoadError } from '../components/QueryState';
 import { IconBoard, IconChat, IconSpark } from '../components/icons';
 
@@ -19,6 +19,7 @@ export default function ProjectDetail() {
   const queryClient = useQueryClient();
   const [rejectComment, setRejectComment] = useState('');
   const [showReject, setShowReject] = useState(false);
+  const [showRestart, setShowRestart] = useState(false);
 
   const { data: project, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['project', projectId],
@@ -98,6 +99,15 @@ export default function ProjectDetail() {
     mutationFn: () => api.post(`/api/projects/${projectId}/run`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['project', projectId] }),
   });
+  const restart = useMutation({
+    mutationFn: () => api.post(`/api/projects/${projectId}/restart`),
+    onSuccess: () => {
+      setShowRestart(false);
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['report', projectId] });
+    },
+  });
   const stopRun = useMutation({
     mutationFn: () => api.post(`/api/projects/${projectId}/run/stop`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['project', projectId] }),
@@ -169,16 +179,53 @@ export default function ProjectDetail() {
             ▶ {t('project.resume')}
           </button>
         )}
+        {project.status !== 'draft' && (
+          <button
+            onClick={() => setShowRestart((v) => !v)}
+            disabled={restart.isPending}
+            className="btn btn-ghost ml-auto px-4 py-2 text-sm"
+          >
+            ↻ {t('project.restart')}
+          </button>
+        )}
         <button
           onClick={() => {
             if (confirm(t('project.deleteConfirm', { name: project.name }))) removeProject.mutate();
           }}
           disabled={removeProject.isPending}
-          className="btn btn-danger ml-auto px-4 py-2 text-sm"
+          className={`btn btn-danger px-4 py-2 text-sm ${project.status === 'draft' ? 'ml-auto' : ''}`}
         >
           {t('common.delete')}
         </button>
       </div>
+
+      {showRestart && (
+        <div className="card rise-in border-red-900/60 bg-red-950/30 p-4">
+          <p className="text-sm font-semibold text-red-300">{t('project.restartConfirmTitle')}</p>
+          <p className="mt-1.5 text-xs leading-relaxed text-ink-300">
+            {t('project.restartConfirmBody')}
+          </p>
+          <p className="mt-1.5 font-mono text-xs text-ink-500">{project.targetRepoPath}</p>
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={() => restart.mutate()}
+              disabled={restart.isPending}
+              className="btn btn-danger px-3.5 py-1.5 text-xs font-semibold"
+            >
+              {restart.isPending ? t('project.restarting') : t('project.restartConfirm')}
+            </button>
+            <button
+              onClick={() => setShowRestart(false)}
+              className="btn btn-ghost px-3.5 py-1.5 text-xs"
+            >
+              {t('common.cancel')}
+            </button>
+          </div>
+          {restart.isError && (
+            <p className="mt-2 text-xs text-red-300">{String((restart.error as Error).message)}</p>
+          )}
+        </div>
+      )}
 
 
       {project.status === 'done' && (
@@ -259,7 +306,12 @@ export default function ProjectDetail() {
                   to={`/tasks/${x.id}`}
                   className="flex items-center justify-between rounded-lg bg-ink-850 px-3 py-2.5 transition-colors hover:bg-ink-800"
                 >
-                  <span className="truncate text-sm text-ink-200">{x.title}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="shrink-0 rounded bg-ink-800 px-1.5 py-0.5 font-mono text-[10px] text-ink-400">
+                      {t('task.step', { n: stepNumber(x) })}
+                    </span>
+                    <span className="truncate text-sm text-ink-200">{x.title}</span>
+                  </span>
                   <span
                     className={`ml-2 shrink-0 rounded-md px-2 py-0.5 text-[11px] ${taskStatusStyle[x.status]}`}
                   >

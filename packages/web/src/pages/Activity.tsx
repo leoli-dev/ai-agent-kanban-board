@@ -36,6 +36,7 @@ const statusDot: Record<string, string> = {
   failed: 'bg-red-500',
   stuck: 'bg-orange-500',
   killed: 'bg-ink-500',
+  interrupted: 'bg-ink-600',
 };
 
 function tokens(n: number | null | undefined): string {

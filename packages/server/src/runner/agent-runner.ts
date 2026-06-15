@@ -165,7 +165,11 @@ export class AgentRunner extends EventEmitter {
     return this.active.has(runId);
   }
 
-  /** Mark orphaned 'running' rows from a previous server process as killed. */
+  /**
+   * Mark 'running' rows left by a previous server process as 'interrupted' —
+   * a restart/crash is not a real failure, so it must not count toward failure
+   * stats or show as a red FAIL. The orchestrator re-queues the owning task.
+   */
   recoverOrphans(): void {
     for (const run of this.deps.runStore.listRunning()) {
       if (this.active.has(run.id)) continue;
@@ -177,10 +181,10 @@ export class AgentRunner extends EventEmitter {
         }
       }
       this.deps.runStore.update(run.id, {
-        status: 'killed',
+        status: 'interrupted',
         endedAt: Date.now(),
-        resultText: 'orphaned by server restart',
-        failureClass: 'TASK_FAIL',
+        resultText: 'interrupted by server restart',
+        failureClass: null,
       });
     }
   }

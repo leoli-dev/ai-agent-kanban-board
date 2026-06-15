@@ -60,6 +60,7 @@ export const en: Record<string, string> = {
   'task.done': 'Done',
   'task.failed': 'Failed',
   'task.blocked': 'Blocked',
+  'task.step': 'Step {n}',
 
   // roles
   'role.planner': 'Planner',
@@ -132,6 +133,12 @@ export const en: Record<string, string> = {
   'project.sendBack': 'Send back to planner',
   'project.costToDate': 'Cost to date: {cost}',
   'project.report': 'Completion report',
+  'project.restart': 'Restart',
+  'project.restarting': 'Restarting…',
+  'project.restartConfirm': 'Yes, wipe & restart',
+  'project.restartConfirmTitle': 'Restart this project from scratch?',
+  'project.restartConfirmBody':
+    'Every task resets to the start and the whole plan re-runs from zero. ALL changes the agents made in the target folder are discarded (for repos created here, back to the initial commit). This cannot be undone.',
   'project.livePreview': 'Live preview',
   'project.openPreview': 'Open',
   'project.stopPreview': 'Stop preview',

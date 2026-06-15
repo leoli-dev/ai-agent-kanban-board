@@ -7,9 +7,15 @@ import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import type { InputKind } from '@akb/shared';
 import { schema } from '../db/index.js';
-import { toPlanDocument, toProject, toProjectInput } from '../db/mappers.js';
+import { toPlanDocument, toProject, toProjectInput, toTask } from '../db/mappers.js';
 import type { AppContext } from '../context.js';
-import { initRepoWithBaseline, isGitRepo, pruneWorktrees } from '../workspace/git.js';
+import {
+  defaultBranch,
+  initRepoWithBaseline,
+  isGitRepo,
+  pruneWorktrees,
+  resetProjectRepo,
+} from '../workspace/git.js';
 import { scaffoldWorkspace, slugify, workspacePaths } from '../workspace/workspace.js';
 
 const CreateProjectBody = z.object({
@@ -233,6 +239,71 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     void ctx.projectRunner.start(toProject(row)).catch(() => {});
     reply.code(202);
     return { ok: true };
+  });
+
+  /**
+   * Hard restart: stop everything, wipe the repo back to its starting point
+   * (initial baseline for repos we created), reset every task to backlog, and
+   * re-run the plan from scratch. Destructive — the UI double-confirms.
+   */
+  app.post('/api/projects/:id/restart', async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const row = ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get();
+    if (!row) return reply.code(404).send({ error: 'project not found' });
+    const project = toProject(row);
+
+    // Stop the live preview and kill any in-flight agents.
+    ctx.projectRunner.stop(id);
+    for (const run of ctx.runStore.listByProject(id)) {
+      if (run.status === 'running') ctx.runner.kill(run.id);
+    }
+
+    // Drop the project's worktrees, then wipe the repo to a clean start.
+    const paths = workspacePaths(ctx.workspacesDir, id);
+    fs.rmSync(path.join(paths.root, 'worktrees'), { recursive: true, force: true });
+    const target = await defaultBranch(project.targetRepoPath).catch(() => 'main');
+    const newBranch = `agent/${slugify(project.name)}-${id.slice(0, 4).toLowerCase()}`;
+    try {
+      await resetProjectRepo(project.targetRepoPath, target, newBranch, project.freshRepo);
+    } catch (err) {
+      return reply.code(400).send({ error: `could not reset the repository: ${String(err)}` });
+    }
+    await pruneWorktrees(project.targetRepoPath).catch(() => {});
+
+    // Reset project + every task back to the very beginning.
+    const hasTasks = ctx.db.select().from(schema.tasks).where(eq(schema.tasks.projectId, id)).all().length > 0;
+    ctx.db
+      .update(schema.projects)
+      .set({
+        status: hasTasks ? 'running' : 'draft',
+        gitBranch: newBranch,
+        liveUrl: null,
+        runPid: null,
+        completedAt: null,
+      })
+      .where(eq(schema.projects.id, id))
+      .run();
+    ctx.db
+      .update(schema.tasks)
+      .set({ status: 'backlog', retryCount: 0, bounceCount: 0, blockedReason: null, updatedAt: Date.now() })
+      .where(eq(schema.tasks.projectId, id))
+      .run();
+    ctx.reports.invalidate(project);
+
+    const updated = toProject(
+      ctx.db.select().from(schema.projects).where(eq(schema.projects.id, id)).get()!,
+    );
+    const tasks = ctx.db
+      .select()
+      .from(schema.tasks)
+      .where(eq(schema.tasks.projectId, id))
+      .all()
+      .map((t) => toTask(t, []));
+    ctx.hub.publish('global', { type: 'project.updated', project: updated });
+    ctx.hub.publish(`board:${id}`, { type: 'project.updated', project: updated });
+    ctx.hub.publish(`board:${id}`, { type: 'tasks.created', projectId: id, tasks });
+    ctx.orchestrator.nudge();
+    return updated;
   });
 
   /** Stop the hosted live preview. */

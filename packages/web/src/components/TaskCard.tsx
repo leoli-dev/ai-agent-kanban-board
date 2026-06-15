@@ -2,6 +2,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { Link } from 'react-router-dom';
 import type { Task } from '@akb/shared';
 import { useT } from '../lib/i18n';
+import { stepNumber } from '../lib/format';
 
 export function TaskCard({
   task,
@@ -39,6 +40,9 @@ export function TaskCard({
           onPointerDown={(e) => e.stopPropagation()}
           className="min-w-0 text-sm font-medium leading-snug text-ink-100 transition-colors hover:text-accent-300"
         >
+          <span className="mr-1.5 rounded bg-ink-800 px-1.5 py-0.5 align-middle font-mono text-[10px] text-ink-400">
+            {t('task.step', { n: stepNumber(task) })}
+          </span>
           {task.title}
         </Link>
         {liveModel !== undefined && (

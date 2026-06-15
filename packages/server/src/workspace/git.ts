@@ -173,6 +173,41 @@ export async function mergeBranchInto(
   }
 }
 
+/**
+ * Wipe a repo back to a clean starting point for a project restart: force-check
+ * out the default branch, drop all working-tree changes, and — for repos we
+ * created (wipeToRoot) — roll history back to the initial baseline commit so
+ * every agent change is gone. Then delete the project's agent/task branches and
+ * prune its worktrees. For existing repos, history is left intact.
+ */
+export async function resetProjectRepo(
+  repoPath: string,
+  target: string,
+  branchPrefix: string,
+  wipeToRoot: boolean,
+): Promise<void> {
+  const git = simpleGit(repoPath);
+  await git.raw(['worktree', 'prune']).catch(() => {});
+  await git.raw(['checkout', '-f', target]).catch(() => {});
+  if (wipeToRoot) {
+    const root = (await git.raw(['rev-list', '--max-parents=0', 'HEAD']).catch(() => ''))
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .pop();
+    if (root) await git.raw(['reset', '--hard', root]).catch(() => {});
+  } else {
+    await git.raw(['reset', '--hard', 'HEAD']).catch(() => {});
+  }
+  await git.raw(['clean', '-fd']).catch(() => {});
+  const locals = await git.branchLocal().catch(() => ({ all: [] as string[] }));
+  for (const b of locals.all) {
+    if (b !== target && b.startsWith(branchPrefix)) {
+      await git.raw(['branch', '-D', b]).catch(() => {});
+    }
+  }
+}
+
 export async function deleteBranch(repoPath: string, branch: string): Promise<void> {
   await simpleGit(repoPath)
     .raw(['branch', '-D', branch])
