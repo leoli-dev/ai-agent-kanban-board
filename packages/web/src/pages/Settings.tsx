@@ -277,7 +277,19 @@ function ProvidersSection() {
         </button>
       </div>
 
-      <ul className="space-y-2">
+      {building && !draft && (
+        <ProviderBuilder
+          onClose={() => setBuilding(false)}
+          onCustom={() => {
+            setBuilding(false);
+            setDraft(emptyDraft());
+          }}
+        />
+      )}
+
+      {draft && !draft.id && draftForm}
+
+      <ul className="mt-2 space-y-2">
         {providers.map((p) => {
           const result = testResult[p.id];
           return (
@@ -403,18 +415,6 @@ function ProvidersSection() {
           </p>
         )}
       </ul>
-
-      {building && !draft && (
-        <ProviderBuilder
-          onClose={() => setBuilding(false)}
-          onCustom={() => {
-            setBuilding(false);
-            setDraft(emptyDraft());
-          }}
-        />
-      )}
-
-      {draft && !draft.id && draftForm}
     </section>
   );
 }
