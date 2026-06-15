@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import { desc, eq, sql } from 'drizzle-orm';
+import { desc, eq, inArray, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
@@ -258,9 +258,26 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
       if (run.status === 'running') ctx.runner.kill(run.id);
     }
 
-    // Drop the project's worktrees, then wipe the repo to a clean start.
+    // Wipe run history + logs + artifacts so the task pages start clean.
+    const taskIds = ctx.db
+      .select({ id: schema.tasks.id })
+      .from(schema.tasks)
+      .where(eq(schema.tasks.projectId, id))
+      .all()
+      .map((t) => t.id);
+    ctx.db.delete(schema.agentRuns).where(eq(schema.agentRuns.projectId, id)).run();
+    if (taskIds.length) {
+      ctx.db.delete(schema.agentRuns).where(inArray(schema.agentRuns.taskId, taskIds)).run();
+    }
+
+    // Drop the project's worktrees, logs and artifacts, then wipe the repo.
     const paths = workspacePaths(ctx.workspacesDir, id);
-    fs.rmSync(path.join(paths.root, 'worktrees'), { recursive: true, force: true });
+    for (const dir of [path.join(paths.root, 'worktrees'), paths.logs, paths.artifacts, paths.qa]) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(paths.logs, { recursive: true });
+    fs.mkdirSync(paths.artifacts, { recursive: true });
+    fs.mkdirSync(paths.qa, { recursive: true });
     const target = await defaultBranch(project.targetRepoPath).catch(() => 'main');
     const newBranch = `agent/${slugify(project.name)}-${id.slice(0, 4).toLowerCase()}`;
     try {

@@ -106,6 +106,9 @@ export default function ProjectDetail() {
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
       queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
       queryClient.invalidateQueries({ queryKey: ['report', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projectRuns', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['taskRuns'] });
+      queryClient.invalidateQueries({ queryKey: ['runLog'] });
     },
   });
   const stopRun = useMutation({
