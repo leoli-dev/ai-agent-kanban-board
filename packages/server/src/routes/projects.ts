@@ -287,12 +287,14 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     }
     await pruneWorktrees(project.targetRepoPath).catch(() => {});
 
-    // Reset project + every task back to the very beginning.
+    // Reset project + every task back to the very beginning. Land in 'paused'
+    // (ready, but idle) so the user explicitly clicks Resume to start again —
+    // restart never auto-runs. Projects with no plan yet go back to draft.
     const hasTasks = ctx.db.select().from(schema.tasks).where(eq(schema.tasks.projectId, id)).all().length > 0;
     ctx.db
       .update(schema.projects)
       .set({
-        status: hasTasks ? 'running' : 'draft',
+        status: hasTasks ? 'paused' : 'draft',
         gitBranch: newBranch,
         liveUrl: null,
         runPid: null,
@@ -319,7 +321,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext): Prom
     ctx.hub.publish('global', { type: 'project.updated', project: updated });
     ctx.hub.publish(`board:${id}`, { type: 'project.updated', project: updated });
     ctx.hub.publish(`board:${id}`, { type: 'tasks.created', projectId: id, tasks });
-    ctx.orchestrator.nudge();
+    // No nudge: the project is paused and waits for the user to Resume.
     return updated;
   });
 
