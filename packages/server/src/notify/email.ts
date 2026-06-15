@@ -6,6 +6,7 @@ export async function sendEmail(
   subject: string,
   body: string,
 ): Promise<void> {
+  if (process.env.VITEST || process.env.NODE_ENV === 'test') return;
   const transport = nodemailer.createTransport({
     host: smtp.host,
     port: smtp.port,
