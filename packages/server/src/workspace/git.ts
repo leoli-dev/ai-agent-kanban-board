@@ -69,7 +69,12 @@ export async function ensureWorktree(
   branch: string,
   base: string,
 ): Promise<void> {
+  // A live worktree has a `.git` file pointing at its admin dir — reuse it.
   if (fs.existsSync(path.join(dir, '.git'))) return;
+  // The directory exists but isn't a live worktree (e.g. a half-removed one
+  // that left behind ignored build output like .next). Clear it so the add
+  // below doesn't fail with "already exists".
+  if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(dir), { recursive: true });
   const git = simpleGit(repoPath);
   await git.raw(['worktree', 'prune']).catch(() => {});
@@ -92,6 +97,7 @@ export async function addDetachedWorktree(
   ref: string,
 ): Promise<void> {
   if (fs.existsSync(path.join(dir, '.git'))) return;
+  if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(dir), { recursive: true });
   const git = simpleGit(repoPath);
   await git.raw(['worktree', 'prune']).catch(() => {});
