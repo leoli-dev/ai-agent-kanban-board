@@ -348,6 +348,43 @@ describe('Orchestrator (money test)', () => {
     expect(taskStatus(f.ctx, 't1')).toBe('done');
   }, 30_000);
 
+  it('accepts a visual pass with a real screenshot even if the tester over-cites a missing one', async () => {
+    const f = makeFixture([
+      { id: 't1', deps: [], description: 'Render a chart', acceptanceCriteria: ['chart renders (screenshot)'] },
+    ]);
+    const shot = path.join(f.artifacts, 'real-t1.png');
+    const ghost = path.join(f.artifacts, 'never-saved.png');
+    addMockProfile(f.ctx, 'coder', scripts.success('implemented'));
+    addMockProfile(
+      f.ctx,
+      'reviewer',
+      scripts.success('REVIEW_DONE', {
+        writeFiles: [
+          { path: path.join(f.artifacts, 'review-t1.json'), content: JSON.stringify({ verdict: 'approve', notes: 'ok' }) },
+        ],
+      }),
+    );
+    addMockProfile(
+      f.ctx,
+      'tester',
+      scripts.success('TEST_DONE', {
+        writeFiles: [
+          { path: shot, content: 'PNGDATA' }, // one real screenshot saved
+          {
+            path: path.join(f.artifacts, 'test-report-t1.json'),
+            // cites the real one AND a path it never wrote
+            content: JSON.stringify({ pass: true, summary: 'renders', evidence: [shot, ghost] }),
+          },
+        ],
+      }),
+    );
+
+    f.orchestrator.start();
+    await waitFor(() => taskStatus(f.ctx, 't1') === 'done');
+    f.orchestrator.stop();
+    expect(taskStatus(f.ctx, 't1')).toBe('done');
+  }, 30_000);
+
   it('does not demand screenshots when only the description (not the criteria) mentions rendering', async () => {
     const f = makeFixture([
       {

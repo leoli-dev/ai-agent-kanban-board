@@ -520,22 +520,26 @@ export class Orchestrator {
     cwd: string,
     artifactsDir: string,
   ): string | null {
-    for (const p of evidence) {
+    // Which of the cited screenshots actually exist on disk. We require REAL
+    // evidence, but we don't fail a pass just because the tester over-cited (it
+    // listed a file it never saved): as long as a genuine screenshot backs the
+    // claim, an extra dead path is sloppiness, not fabrication.
+    const existing = evidence.filter((p) => {
       const candidates = path.isAbsolute(p)
         ? [p]
         : [path.resolve(cwd, p), path.resolve(artifactsDir, p), path.join(artifactsDir, path.basename(p))];
-      if (!candidates.some((c) => fs.existsSync(c))) {
-        return `claimed screenshot evidence not found on disk: ${p}`;
-      }
-    }
+      return candidates.some((c) => fs.existsSync(c));
+    });
     // Only the acceptance CRITERIA decide whether a screenshot is required — the
     // planner writes screenshot language into genuinely visual steps. Keying on
     // the prose description would false-positive on scaffolding/backend tasks
     // that merely mention rendering ("do NOT implement render logic", "the
     // reporter will screenshot this later"), trapping them in a bounce loop.
     const criteriaText = task.acceptanceCriteria.join('\n');
-    if (VISUAL_CRITERION_RE.test(criteriaText) && evidence.length === 0) {
-      return 'an acceptance criterion requires visual verification but the tester provided no screenshot evidence';
+    if (VISUAL_CRITERION_RE.test(criteriaText) && existing.length === 0) {
+      return evidence.length === 0
+        ? 'an acceptance criterion requires visual verification but the tester provided no screenshot evidence'
+        : 'an acceptance criterion requires visual verification but none of the cited screenshots exist on disk';
     }
     return null;
   }
