@@ -30,10 +30,22 @@ export const codexAdapter: EngineAdapter = {
     const args = ['exec', '--json', '--skip-git-repo-check'];
     if (req.resumeSessionId) args.splice(1, 0, 'resume', req.resumeSessionId);
 
-    const sandbox = req.profile.resolvedEnv.CODEX_SANDBOX ?? 'workspace-write';
-    args.push('--sandbox', sandbox);
-    if (sandbox === 'workspace-write' && req.addDirs.length) {
-      args.push('-c', `sandbox_workspace_write.writable_roots=${JSON.stringify(req.addDirs)}`);
+    // Codex sandboxes by default (workspace-write), which blocks what agents
+    // legitimately need in their worktrees: network access (E2E dev servers),
+    // launching a headless browser, and even committing — the worktree's git
+    // metadata lives in the PARENT repo's .git, outside the sandbox's writable
+    // roots, so `git commit` fails with "index.lock: Operation not permitted".
+    // claude-code agents here already run with full shell access, so by default
+    // bypass codex's sandbox + approvals too. Set CODEX_SANDBOX on the provider
+    // (read-only | workspace-write | danger-full-access) to re-enable a sandbox.
+    const sandbox = req.profile.resolvedEnv.CODEX_SANDBOX;
+    if (sandbox) {
+      args.push('--sandbox', sandbox);
+      if (sandbox === 'workspace-write' && req.addDirs.length) {
+        args.push('-c', `sandbox_workspace_write.writable_roots=${JSON.stringify(req.addDirs)}`);
+      }
+    } else {
+      args.push('--dangerously-bypass-approvals-and-sandbox');
     }
     if (req.profile.modelLabel) args.push('-m', req.profile.modelLabel);
     const effort = req.profile.resolvedEnv.CODEX_REASONING_EFFORT;
