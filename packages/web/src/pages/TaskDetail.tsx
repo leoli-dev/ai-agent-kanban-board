@@ -145,21 +145,6 @@ export default function TaskDetail() {
         )}
       </div>
 
-      <section className="card p-4">
-        <h2 className="mb-2 text-sm font-semibold text-ink-300">{t('task.description')}</h2>
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-200">{task.description}</p>
-        {task.acceptanceCriteria.length > 0 && (
-          <>
-            <h3 className="mb-1 mt-3 text-xs font-semibold text-ink-400">{t('task.criteria')}</h3>
-            <ul className="list-inside list-disc space-y-0.5 text-sm text-ink-300">
-              {task.acceptanceCriteria.map((c, i) => (
-                <li key={i}>{c}</li>
-              ))}
-            </ul>
-          </>
-        )}
-      </section>
-
       <div className="flex flex-wrap gap-2">
         {activeRun ? (
           <button
@@ -190,6 +175,21 @@ export default function TaskDetail() {
           <IconX width={15} height={15} /> {t('task.delete')}
         </button>
       </div>
+
+      <section className="card p-4">
+        <h2 className="mb-2 text-sm font-semibold text-ink-300">{t('task.description')}</h2>
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-200">{task.description}</p>
+        {task.acceptanceCriteria.length > 0 && (
+          <>
+            <h3 className="mb-1 mt-3 text-xs font-semibold text-ink-400">{t('task.criteria')}</h3>
+            <ul className="list-inside list-disc space-y-0.5 text-sm text-ink-300">
+              {task.acceptanceCriteria.map((c, i) => (
+                <li key={i}>{c}</li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
 
       <StageSummaries
         runs={runs}
