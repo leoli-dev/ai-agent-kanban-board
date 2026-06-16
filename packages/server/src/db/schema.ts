@@ -72,6 +72,11 @@ export const tasks = sqliteTable('tasks', {
   retryCount: integer('retry_count').notNull().default(0),
   bounceCount: integer('bounce_count').notNull().default(0),
   blockedReason: text('blocked_reason'),
+  /** 1 = held by the user: the orchestrator skips it until resumed. */
+  paused: integer('paused').notNull().default(0),
+  /** Pin a specific provider profile for this task's coder runs (user override
+   * when the auto-picked model is too slow); null = role-based selection. */
+  modelOverrideId: text('model_override_id'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 });

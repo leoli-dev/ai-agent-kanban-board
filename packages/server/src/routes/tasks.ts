@@ -166,4 +166,68 @@ export async function taskRoutes(app: FastifyInstance, ctx: AppContext): Promise
     ctx.orchestrator.nudge();
     return updated;
   });
+
+  /**
+   * Pause a task: stop any running agent and hold the task so the orchestrator
+   * won't pick it up. Used to step in when the current model is too slow — pause,
+   * switch the model, then resume.
+   */
+  app.post('/api/tasks/:id/pause', async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const task = getTask(ctx.db, id);
+    if (!task) return reply.code(404).send({ error: 'task not found' });
+    for (const run of ctx.runStore.listByTask(id)) {
+      if (run.status === 'running') ctx.runner.kill(run.id);
+    }
+    // A killed wip task would otherwise re-queue to backlog and run again; mark
+    // it paused (and idle) so it stays put until the user resumes.
+    const updated = updateTask(ctx.db, ctx.hub, id, {
+      paused: 1,
+      ...(task.status === 'wip' ? { status: 'backlog' as const } : {}),
+    });
+    return updated;
+  });
+
+  /** Resume a paused task; ensure the project is running so it executes. */
+  app.post('/api/tasks/:id/resume', async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const task = getTask(ctx.db, id);
+    if (!task) return reply.code(404).send({ error: 'task not found' });
+    const projectRow = ctx.db
+      .select()
+      .from(schema.projects)
+      .where(eq(schema.projects.id, task.projectId))
+      .get();
+    if (projectRow && ['paused', 'failed', 'done'].includes(projectRow.status)) {
+      ctx.db
+        .update(schema.projects)
+        .set({ status: 'running', completedAt: null })
+        .where(eq(schema.projects.id, task.projectId))
+        .run();
+      const updatedProject = toProject(
+        ctx.db.select().from(schema.projects).where(eq(schema.projects.id, task.projectId)).get()!,
+      );
+      ctx.hub.publish('global', { type: 'project.updated', project: updatedProject });
+      ctx.hub.publish(`board:${task.projectId}`, { type: 'project.updated', project: updatedProject });
+    }
+    const updated = updateTask(ctx.db, ctx.hub, id, { paused: 0 });
+    ctx.orchestrator.nudge();
+    return updated;
+  });
+
+  /**
+   * Pin (or clear) the model for this task's coder runs. The override beats
+   * role selection and escalation; null restores auto-by-role.
+   */
+  app.patch('/api/tasks/:id/model', async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const body = z.object({ profileId: z.string().nullable() }).parse(req.body);
+    const task = getTask(ctx.db, id);
+    if (!task) return reply.code(404).send({ error: 'task not found' });
+    if (body.profileId && !ctx.registry.get(body.profileId)) {
+      return reply.code(400).send({ error: 'unknown model profile' });
+    }
+    const updated = updateTask(ctx.db, ctx.hub, id, { modelOverrideId: body.profileId });
+    return updated;
+  });
 }

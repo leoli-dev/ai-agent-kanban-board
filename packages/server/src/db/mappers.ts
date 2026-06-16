@@ -75,6 +75,8 @@ export function toTask(r: Row<typeof schema.tasks>, dependsOn: string[]): Task {
     retryCount: r.retryCount,
     bounceCount: r.bounceCount,
     blockedReason: r.blockedReason,
+    paused: r.paused === 1,
+    modelOverrideId: r.modelOverrideId,
     dependsOn,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,

@@ -194,6 +194,7 @@ export class Orchestrator {
       const ready = tasks.filter(
         (t) =>
           t.status === 'backlog' &&
+          !t.paused &&
           !this.activeTasks.has(t.id) &&
           t.dependsOn.every((d) => satisfied.has(d)),
       );
@@ -213,7 +214,7 @@ export class Orchestrator {
       const settings = this.deps.settings.get();
       for (const task of tasks) {
         if (this.activeTasks.size >= capacityTotal) return;
-        if (this.activeTasks.has(task.id)) continue;
+        if (this.activeTasks.has(task.id) || task.paused) continue;
         const wantsReview =
           task.status === 'to_review' &&
           settings.autoAdvanceReview &&
@@ -350,6 +351,13 @@ export class Orchestrator {
       // 1 → medium, 2+ → high.
       const escalation = task.bounceCount + task.retryCount;
       const minTier: ModelTier = escalation >= 2 ? 'high' : escalation === 1 ? 'medium' : 'low';
+      // A user-pinned model overrides role selection AND escalation — when they
+      // pick a model for this task, run exactly that (only if it still exists
+      // and is enabled; otherwise fall back to auto).
+      const override = task.modelOverrideId
+        ? this.deps.registry.get(task.modelOverrideId)
+        : null;
+      const profileId = override && override.enabled ? override.id : undefined;
       const outcome = await this.deps.runner.run({
         role: 'coder',
         prompt: this.buildCoderPrompt(project, task, ws.artifacts, prep),
@@ -360,6 +368,7 @@ export class Orchestrator {
         addDirs: [ws.root],
         systemAppend: CODER_CONTRACT,
         minTier,
+        profileId,
         onStuck: (info) => this.diagnoseStuckRun(project, task, info.logTail, ws.artifacts),
       });
 

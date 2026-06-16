@@ -114,6 +114,10 @@ export interface Task {
   retryCount: number;
   bounceCount: number;
   blockedReason: string | null;
+  /** Held by the user — the orchestrator skips it until resumed. */
+  paused: boolean;
+  /** Pinned provider profile for this task's coder runs; null = auto by role. */
+  modelOverrideId: string | null;
   dependsOn: string[];
   createdAt: number;
   updatedAt: number;

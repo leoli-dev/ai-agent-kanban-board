@@ -70,6 +70,25 @@ export default function TaskDetail() {
     mutationFn: (runId: string) => api.post(`/api/runs/${runId}/kill`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['taskRuns', taskId] }),
   });
+  const refreshTask = () => {
+    queryClient.invalidateQueries({ queryKey: ['task', taskId] });
+    queryClient.invalidateQueries({ queryKey: ['taskRuns', taskId] });
+    queryClient.invalidateQueries({ queryKey: ['project'] });
+    queryClient.invalidateQueries({ queryKey: ['tasks'] });
+  };
+  const pause = useMutation({
+    mutationFn: () => api.post(`/api/tasks/${taskId}/pause`),
+    onSuccess: refreshTask,
+  });
+  const resume = useMutation({
+    mutationFn: () => api.post(`/api/tasks/${taskId}/resume`),
+    onSuccess: refreshTask,
+  });
+  const setModel = useMutation({
+    mutationFn: (profileId: string | null) =>
+      api.patch(`/api/tasks/${taskId}/model`, { profileId }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task', taskId] }),
+  });
   const removeTask = useMutation({
     mutationFn: () => api.delete(`/api/tasks/${taskId}`),
     onSuccess: () => {
@@ -98,6 +117,11 @@ export default function TaskDetail() {
           <span className={`rounded-md px-2.5 py-1 text-xs font-medium ${taskStatusStyle[task.status]}`}>
             {t(`task.${task.status}`)}
           </span>
+          {task.paused && !activeRun && (
+            <span className="rounded-md bg-ink-800 px-2.5 py-1 text-xs font-medium text-ink-400">
+              ⏸ {t('task.pausedBadge')}
+            </span>
+          )}
           {activeRun && (
             <span className="flex items-center gap-1.5 text-xs text-teal-300">
               <span className="h-2 w-2 animate-pulse rounded-full bg-teal-400" />
@@ -145,14 +169,31 @@ export default function TaskDetail() {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {activeRun ? (
+          <>
+            <button
+              onClick={() => pause.mutate()}
+              disabled={pause.isPending}
+              className="btn btn-primary px-4 py-2 text-sm"
+            >
+              ⏸ {t('task.pause')}
+            </button>
+            <button
+              onClick={() => kill.mutate(activeRun.id)}
+              disabled={kill.isPending}
+              className="btn btn-danger px-4 py-2 text-sm"
+            >
+              <IconStop width={15} height={15} /> {t('task.kill')}
+            </button>
+          </>
+        ) : task.paused ? (
           <button
-            onClick={() => kill.mutate(activeRun.id)}
-            disabled={kill.isPending}
-            className="btn btn-danger px-4 py-2 text-sm"
+            onClick={() => resume.mutate()}
+            disabled={resume.isPending}
+            className="btn btn-primary px-4 py-2 text-sm"
           >
-            <IconStop width={15} height={15} /> {t('task.kill')}
+            ▶ {t('task.resume')}
           </button>
         ) : (
           ['failed', 'blocked', 'wip'].includes(task.status) && (
@@ -165,6 +206,24 @@ export default function TaskDetail() {
             </button>
           )
         )}
+        {/* Pin the model for this task's coder runs — step in when the auto one is too slow. */}
+        <label className="flex items-center gap-1.5 text-xs text-ink-400">
+          {t('task.model')}
+          <select
+            value={task.modelOverrideId ?? ''}
+            onChange={(e) => setModel.mutate(e.target.value || null)}
+            disabled={setModel.isPending}
+            className="input px-2 py-1 text-xs"
+          >
+            <option value="">{t('task.modelAuto')}</option>
+            {providers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.modelLabel ? ` (${p.modelLabel})` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
         <button
           onClick={() => {
             if (confirm(t('task.deleteConfirm', { title: task.title }))) removeTask.mutate();

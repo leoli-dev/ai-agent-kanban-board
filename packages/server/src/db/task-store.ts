@@ -52,6 +52,8 @@ export function updateTask(
     bounceCount: number;
     blockedReason: string | null;
     description: string;
+    paused: number;
+    modelOverrideId: string | null;
   }>,
 ): Task | null {
   db.update(schema.tasks)
