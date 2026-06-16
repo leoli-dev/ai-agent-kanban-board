@@ -61,6 +61,9 @@ export default function TaskDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['task', taskId] });
       queryClient.invalidateQueries({ queryKey: ['taskRuns', taskId] });
+      // The project may have been resumed to 'running' to execute the redo.
+      queryClient.invalidateQueries({ queryKey: ['project'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
   const kill = useMutation({

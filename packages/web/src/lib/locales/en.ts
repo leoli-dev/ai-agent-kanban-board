@@ -181,7 +181,7 @@ export const en: Record<string, string> = {
   'task.description': 'Description',
   'task.criteria': 'Acceptance criteria',
   'task.kill': 'Kill agent',
-  'task.retry': 'Retry task',
+  'task.retry': 'Re-run task',
   'task.summary': 'Stage summaries',
   'task.testPass': 'pass',
   'task.testFail': 'fail',

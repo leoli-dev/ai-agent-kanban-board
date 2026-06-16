@@ -119,14 +119,50 @@ export async function taskRoutes(app: FastifyInstance, ctx: AppContext): Promise
     reply.code(204);
   });
 
-  /** Re-queue a failed/blocked/interrupted task for another attempt. */
+  /**
+   * Re-run a single task from scratch — CI "re-run failed job" style. Clears the
+   * failed attempt's worktree, resets its bounce/retry budget so it gets a full
+   * fresh attempt (not an instant re-fail), and resumes the project if it had
+   * stopped, so the orchestrator picks the task up. Other tasks are untouched.
+   */
   app.post('/api/tasks/:id/retry', async (req, reply) => {
     const id = (req.params as { id: string }).id;
     const task = getTask(ctx.db, id);
     if (!task) return reply.code(404).send({ error: 'task not found' });
     const active = ctx.runStore.listByTask(id).some((r) => r.status === 'running');
     if (active) return reply.code(409).send({ error: 'task has an active agent — kill it first' });
-    const updated = updateTask(ctx.db, ctx.hub, id, { status: 'backlog', blockedReason: null });
+
+    const projectRow = ctx.db
+      .select()
+      .from(schema.projects)
+      .where(eq(schema.projects.id, task.projectId))
+      .get();
+    if (projectRow) {
+      // Drop the failed attempt's worktree/branch so the redo starts clean and
+      // re-bases on the latest integrated work.
+      await ctx.orchestrator.cleanupTaskWorktree(toProject(projectRow), task).catch(() => {});
+      // The orchestrator only advances 'running' projects — resume if it stopped
+      // (e.g. it parked after this task failed) so the redo actually executes.
+      if (['paused', 'failed', 'done'].includes(projectRow.status)) {
+        ctx.db
+          .update(schema.projects)
+          .set({ status: 'running', completedAt: null })
+          .where(eq(schema.projects.id, task.projectId))
+          .run();
+        const updatedProject = toProject(
+          ctx.db.select().from(schema.projects).where(eq(schema.projects.id, task.projectId)).get()!,
+        );
+        ctx.hub.publish('global', { type: 'project.updated', project: updatedProject });
+        ctx.hub.publish(`board:${task.projectId}`, { type: 'project.updated', project: updatedProject });
+      }
+    }
+
+    const updated = updateTask(ctx.db, ctx.hub, id, {
+      status: 'backlog',
+      blockedReason: null,
+      retryCount: 0,
+      bounceCount: 0,
+    });
     ctx.orchestrator.nudge();
     return updated;
   });

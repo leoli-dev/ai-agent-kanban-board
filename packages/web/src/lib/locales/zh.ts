@@ -181,7 +181,7 @@ export const zh: Record<string, string> = {
   'task.description': '描述',
   'task.criteria': '验收标准',
   'task.kill': '终止智能体',
-  'task.retry': '重试任务',
+  'task.retry': '重跑任务',
   'task.summary': '成果总结',
   'task.testPass': '通过',
   'task.testFail': '未通过',
