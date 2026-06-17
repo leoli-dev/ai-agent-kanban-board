@@ -292,6 +292,22 @@ export async function discardUncommitted(dir: string): Promise<void> {
   await git.raw(['clean', '-fd']).catch(() => {});
 }
 
+/**
+ * Best common ancestor of two refs — the commit a task branch diverged from.
+ * Diffing against this (rather than the moving integration tip) shows only what
+ * the task itself changed, so sibling tasks merged into the base in the meantime
+ * don't show up as phantom deletions. Returns null if there is no shared history.
+ */
+export async function mergeBase(dir: string, a: string, b: string): Promise<string | null> {
+  const git = simpleGit(dir);
+  try {
+    const out = await git.raw(['merge-base', a, b]);
+    return out.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Commit everything in the working tree (used as a safety net after agent runs). */
 export async function commitAll(repoPath: string, message: string): Promise<boolean> {
   const git = simpleGit(repoPath);
