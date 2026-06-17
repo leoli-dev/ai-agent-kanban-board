@@ -23,6 +23,7 @@ import {
   discardUncommitted,
   ensureNotOnBranch,
   ensureWorktree,
+  mergeBase,
   mergeBaseLeaveConflicts,
   mergeBranchInto,
   mergeIntoCurrent,
@@ -489,6 +490,7 @@ export class Orchestrator {
       filePath: reportPath,
       schema: TestVerdict,
       promptIntro: `Verify this task's implementation works. Write your report JSON to: ${reportPath}`,
+      evidenceOf: (r) => r.evidence ?? [],
     });
     // No verdict (the tester crashed or timed out) — don't leave it parked to
     // be relaunched forever. Treat it as a failed verification and bounce to
@@ -534,9 +536,14 @@ export class Orchestrator {
     // listed a file it never saved): as long as a genuine screenshot backs the
     // claim, an extra dead path is sloppiness, not fabrication.
     const existing = evidence.filter((p) => {
+      // Also look for the task-scoped copy runVerdictAgent saves into the
+      // project artifacts dir: the worktree (and any evidence saved inside it)
+      // is scrubbed after the run, so that surviving copy is what we verify. The
+      // task-id prefix keeps it from matching a sibling task's leftover.
+      const preserved = path.join(artifactsDir, `${task.id}-${path.basename(p)}`);
       const candidates = path.isAbsolute(p)
-        ? [p]
-        : [path.resolve(cwd, p), path.resolve(artifactsDir, p), path.join(artifactsDir, path.basename(p))];
+        ? [p, preserved]
+        : [path.resolve(cwd, p), path.resolve(artifactsDir, p), preserved];
       return candidates.some((c) => fs.existsSync(c));
     });
     // Only the acceptance CRITERIA decide whether a screenshot is required — the
@@ -563,8 +570,17 @@ export class Orchestrator {
     filePath: string;
     schema: z.ZodType<T>;
     promptIntro: string;
+    /** Cited files (e.g. tester screenshots) to copy out of the worktree before
+     * it is scrubbed, so the evidence check and report can still find them. */
+    evidenceOf?: (verdict: T) => string[];
   }): Promise<T | null> {
     const ws = workspacePaths(this.deps.workspacesDir, opts.project.id);
+    // Diff against the commit the task branched from, NOT the moving integration
+    // tip: a sibling task merged into the base after this one branched would
+    // otherwise show up as phantom deletions and bounce a clean task.
+    const diffBase =
+      (await mergeBase(opts.cwd, 'HEAD', opts.project.gitBranch!).catch(() => null)) ??
+      opts.project.gitBranch;
     try {
       const outcome = await this.deps.runner.run({
         role: opts.role,
@@ -580,7 +596,7 @@ ${opts.task.acceptanceCriteria.map((c) => `- ${c}`).join('\n') || '- (none)'}
 ## Context
 - You are in the task's isolated worktree; its branch contains the work.
 - Commits for this task use the prefix: task(${opts.task.planStepId ?? opts.task.id})
-- The base branch (for diffing) is: ${opts.project.gitBranch}`,
+- The base for diffing is ${diffBase} — the commit this task branched from. Use \`git diff ${diffBase}\` to see ONLY this task's own changes. Do NOT treat files that simply don't exist on this branch as deletions: parallel sibling tasks add their own files, which are merged in separately.`,
         cwd: opts.cwd,
         logDir: ws.logs,
         taskId: opts.task.id,
@@ -593,7 +609,17 @@ ${opts.task.acceptanceCriteria.map((c) => `- ${c}`).join('\n') || '- (none)'}
         timeouts: { stuckMs: 5 * 60_000, wallClockMs: 20 * 60_000 },
       });
       if (!outcome.ok) return null;
-      return opts.schema.parse(JSON.parse(fs.readFileSync(opts.filePath, 'utf8')));
+      const verdict = opts.schema.parse(JSON.parse(fs.readFileSync(opts.filePath, 'utf8')));
+      // Copy cited evidence into the (out-of-worktree) artifacts dir BEFORE the
+      // finally block scrubs the worktree — otherwise a tester that saved its
+      // screenshots inside the worktree would have them deleted out from under
+      // the evidence check, bouncing every honest visual pass.
+      if (opts.evidenceOf) {
+        for (const cited of opts.evidenceOf(verdict)) {
+          preserveEvidence(cited, opts.cwd, ws.artifacts, opts.task.id);
+        }
+      }
+      return verdict;
     } catch {
       return null;
     } finally {
@@ -808,6 +834,28 @@ Begin.`;
     } catch {
       /* report regenerates on first view */
     }
+  }
+}
+
+/**
+ * Copy a cited evidence file into the project artifacts dir (which lives outside
+ * any worktree, so it survives the post-run scrub). Best-effort: resolves the
+ * citation against the worktree and artifacts dir, copies the first hit by
+ * basename, and silently no-ops if nothing matches or the copy fails.
+ */
+function preserveEvidence(cited: string, cwd: string, artifactsDir: string, taskId: string): void {
+  try {
+    const candidates = path.isAbsolute(cited)
+      ? [cited]
+      : [path.resolve(cwd, cited), path.resolve(artifactsDir, cited)];
+    const src = candidates.find((c) => fs.existsSync(c));
+    if (!src) return;
+    const dest = path.join(artifactsDir, `${taskId}-${path.basename(cited)}`);
+    if (path.resolve(src) === path.resolve(dest)) return; // already there
+    fs.mkdirSync(artifactsDir, { recursive: true });
+    fs.copyFileSync(src, dest);
+  } catch {
+    /* best-effort: a missing copy just surfaces in the evidence check */
   }
 }
 

@@ -10,7 +10,7 @@ import { Orchestrator } from '../src/orchestrator/orchestrator.js';
 import { ReportService } from '../src/reports/report-service.js';
 import { ProjectRunner } from '../src/runner/project-runner.js';
 import { updateTask } from '../src/db/task-store.js';
-import { scaffoldWorkspace } from '../src/workspace/workspace.js';
+import { scaffoldWorkspace, workspacePaths } from '../src/workspace/workspace.js';
 import { addMockProfile, makeTestCtx, scripts, type MockScript, type TestCtx } from './helpers.js';
 
 function makeRepo(tmpDir: string): string {
@@ -383,6 +383,53 @@ describe('Orchestrator (money test)', () => {
     await waitFor(() => taskStatus(f.ctx, 't1') === 'done');
     f.orchestrator.stop();
     expect(taskStatus(f.ctx, 't1')).toBe('done');
+  }, 30_000);
+
+  it('accepts a visual pass whose screenshot the tester saved INSIDE the worktree (preserved before scrub)', async () => {
+    // Regression: the tester saves evidence under its worktree, which is then
+    // scrubbed (git clean) after the run. The cited path must still verify
+    // because runVerdictAgent copies it into the project artifacts dir first.
+    const f = makeFixture([
+      { id: 't1', deps: [], description: 'Render a chart', acceptanceCriteria: ['chart renders (screenshot)'] },
+    ]);
+    // Where the tester drops the screenshot: inside its own task worktree.
+    const worktreeShot = path.join(
+      workspacePaths(f.ctx.tmpDir, f.projectId).root,
+      'worktrees',
+      't1',
+      'artifacts',
+      'inside-t1.png',
+    );
+    addMockProfile(f.ctx, 'coder', scripts.success('implemented'));
+    addMockProfile(
+      f.ctx,
+      'reviewer',
+      scripts.success('REVIEW_DONE', {
+        writeFiles: [
+          { path: path.join(f.artifacts, 'review-t1.json'), content: JSON.stringify({ verdict: 'approve', notes: 'ok' }) },
+        ],
+      }),
+    );
+    addMockProfile(
+      f.ctx,
+      'tester',
+      scripts.success('TEST_DONE', {
+        writeFiles: [
+          { path: worktreeShot, content: 'PNGDATA' }, // saved inside the worktree (will be scrubbed)
+          {
+            path: path.join(f.artifacts, 'test-report-t1.json'),
+            content: JSON.stringify({ pass: true, summary: 'renders', evidence: [worktreeShot] }),
+          },
+        ],
+      }),
+    );
+
+    f.orchestrator.start();
+    await waitFor(() => taskStatus(f.ctx, 't1') === 'done');
+    f.orchestrator.stop();
+    expect(taskStatus(f.ctx, 't1')).toBe('done');
+    // The preserved, task-scoped copy lives in the project artifacts dir.
+    expect(fs.existsSync(path.join(f.artifacts, 't1-inside-t1.png'))).toBe(true);
   }, 30_000);
 
   it('does not demand screenshots when only the description (not the criteria) mentions rendering', async () => {
