@@ -41,6 +41,11 @@ const REVIEWER_CONTRACT = prompt('reviewer');
 const TESTER_CONTRACT = prompt('tester');
 const DECOMPOSE_CONTRACT = prompt('decompose');
 
+// The coder only needs the core file + shell tools. Restricting to this set
+// (claude-code --allowedTools) keeps weaker models from wandering into the
+// wrong tools (e.g. an inherited browser/MCP tool) instead of editing code.
+const CODER_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'];
+
 const ReviewVerdict = z.object({
   verdict: z.enum(['approve', 'changes_requested']),
   notes: z.string().default(''),
@@ -496,6 +501,7 @@ ${project.prompt.slice(0, 1000)}
         projectId: project.id,
         addDirs: [ws.root],
         systemAppend: CODER_CONTRACT,
+        allowedTools: CODER_TOOLS,
         minTier,
         profileId,
         onStuck: (info) => this.diagnoseStuckRun(project, task, info.logTail, ws.artifacts),

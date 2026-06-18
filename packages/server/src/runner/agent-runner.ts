@@ -33,6 +33,8 @@ export interface RunRequest {
    */
   minTier?: ModelTier;
   images?: string[];
+  /** Restrict the run to this tool allowlist (claude-code `--allowedTools`). */
+  allowedTools?: string[];
   /** Test/role overrides for watchdog timers. */
   timeouts?: { stuckMs?: number; wallClockMs?: number };
   /**
@@ -253,6 +255,7 @@ export class AgentRunner extends EventEmitter {
         systemAppend: req.systemAppend,
         resumeSessionId,
         images: req.images,
+        allowedTools: req.allowedTools,
       });
 
       logStream.write(
