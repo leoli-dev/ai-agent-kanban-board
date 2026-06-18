@@ -236,7 +236,11 @@ export function modelsForEnv(engine: EngineId, env: Record<string, string>): str
 
 export const CLAUDE_EFFORT_LEVELS = ['(default)', 'low', 'medium', 'high', 'max'] as const;
 export const CODEX_EFFORT_LEVELS = ['(default)', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const;
-export const CODEX_SANDBOXES = ['workspace-write', 'read-only', 'danger-full-access'] as const;
+// 'off' (the default) writes no CODEX_SANDBOX, so the codex adapter runs with
+// --dangerously-bypass-approvals-and-sandbox — matching claude-code agents'
+// full shell access. A sandbox blocks network (no dev server / headless
+// browser) and even git commits in a worktree, so opt in only when you mean to.
+export const CODEX_SANDBOXES = ['off', 'workspace-write', 'read-only', 'danger-full-access'] as const;
 
 export interface BuilderState {
   typeId: ProviderTypeId;
@@ -262,7 +266,7 @@ export function initialBuilderState(typeId: ProviderTypeId): BuilderState {
     model: type.models[0] ?? '',
     customModel: '',
     effort: '(default)',
-    sandbox: 'workspace-write',
+    sandbox: 'off',
     region: 'intl',
     baseUrl: type.baseUrl?.intl ?? '',
     localToken: 'local',
@@ -291,7 +295,9 @@ export function buildProvider(s: BuilderState): BuiltProvider {
 
   if (type.engine === 'codex') {
     if (s.auth === 'key') env.OPENAI_API_KEY = keyRef;
-    env.CODEX_SANDBOX = s.sandbox;
+    // 'off' = no sandbox (adapter bypasses approvals+sandbox). Only persist
+    // CODEX_SANDBOX when the user opts into an actual sandbox mode.
+    if (s.sandbox !== 'off') env.CODEX_SANDBOX = s.sandbox;
     if (s.effort !== '(default)') env.CODEX_REASONING_EFFORT = s.effort;
     return { name: s.name.trim(), engine: 'codex', modelLabel: model || null, env, secret };
   }

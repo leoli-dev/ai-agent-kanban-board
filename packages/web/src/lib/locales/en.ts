@@ -277,7 +277,7 @@ export const en: Record<string, string> = {
   'builder.effort.codex': 'Reasoning effort passed to codex (model_reasoning_effort).',
   'builder.default': 'default',
   'builder.sandbox': 'Sandbox',
-  'builder.sandbox.help': 'workspace-write: edit files in the repo only (recommended). read-only: no edits. danger-full-access: no sandbox at all.',
+  'builder.sandbox.help': 'off: no sandbox — full shell + network (recommended; needed for dev servers, headless browsers, and git). workspace-write: repo files only, NO network. read-only: no edits. danger-full-access: explicit no sandbox.',
   'builder.preview': 'Preview generated configuration',
   'builder.create': 'Add model',
 
