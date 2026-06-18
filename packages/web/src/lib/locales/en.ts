@@ -186,6 +186,11 @@ export const en: Record<string, string> = {
   'task.resume': 'Resume',
   'task.model': 'Model',
   'task.modelAuto': 'Auto (by role)',
+  'task.split': 'Split into subtasks',
+  'task.splitConfirm':
+    'Send "{title}" back to the planner to split into smaller subtasks? The subtasks are created paused for your review, and this task is replaced.',
+  'task.splitting': 'Splitting…',
+  'task.splitFailed': 'Split failed: {error}',
   'task.pausedBadge': 'Paused',
   'task.summary': 'Stage summaries',
   'task.testPass': 'pass',

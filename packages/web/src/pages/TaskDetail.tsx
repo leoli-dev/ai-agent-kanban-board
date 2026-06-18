@@ -9,7 +9,7 @@ import { useT } from '../lib/i18n';
 import { formatCost, stepNumber, taskStatusStyle, timeAgo } from '../lib/format';
 import { Loading, LoadError } from '../components/QueryState';
 import { LogStream } from '../components/LogStream';
-import { IconArrowLeft, IconBoard, IconRetry, IconStop, IconX } from '../components/icons';
+import { IconArrowLeft, IconBoard, IconPlus, IconRetry, IconStop, IconX } from '../components/icons';
 
 export default function TaskDetail() {
   const t = useT();
@@ -17,6 +17,8 @@ export default function TaskDetail() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [decomposing, setDecomposing] = useState(false);
+  const [decomposeError, setDecomposeError] = useState<string | null>(null);
 
   const { data: task, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['task', taskId],
@@ -54,6 +56,15 @@ export default function TaskDetail() {
     if (msg.type === 'run.started' || msg.type === 'run.updated') {
       queryClient.invalidateQueries({ queryKey: ['taskRuns', taskId] });
     }
+    // Split finished: this task was replaced by subtasks — go see them.
+    if (msg.type === 'task.deleted' && msg.taskId === taskId) {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      navigate(`/projects/${msg.projectId}/board`);
+    }
+    if (msg.type === 'task.decompose_failed' && msg.taskId === taskId) {
+      setDecomposing(false);
+      setDecomposeError(msg.error);
+    }
   });
 
   const retry = useMutation({
@@ -88,6 +99,14 @@ export default function TaskDetail() {
     mutationFn: (profileId: string | null) =>
       api.patch(`/api/tasks/${taskId}/model`, { profileId }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task', taskId] }),
+  });
+  const decompose = useMutation({
+    mutationFn: () => api.post(`/api/tasks/${taskId}/decompose`),
+    onSuccess: () => {
+      setDecomposeError(null);
+      setDecomposing(true); // planner runs in the background; WS replaces the task
+    },
+    onError: (e) => setDecomposeError(e instanceof Error ? e.message : String(e)),
   });
   const removeTask = useMutation({
     mutationFn: () => api.delete(`/api/tasks/${taskId}`),
@@ -206,6 +225,20 @@ export default function TaskDetail() {
             </button>
           )
         )}
+        {/* Send a too-big task back to the planner to split into smaller subtasks. */}
+        {!activeRun && task.status !== 'done' && (
+          <button
+            onClick={() => {
+              if (decomposing) return;
+              if (confirm(t('task.splitConfirm', { title: task.title }))) decompose.mutate();
+            }}
+            disabled={decompose.isPending || decomposing}
+            className="btn btn-ghost px-4 py-2 text-sm"
+          >
+            <IconPlus width={15} height={15} />{' '}
+            {decomposing ? t('task.splitting') : t('task.split')}
+          </button>
+        )}
         {/* Pin the model for this task's coder runs — step in when the auto one is too slow. */}
         <label className="flex items-center gap-1.5 text-xs text-ink-400">
           {t('task.model')}
@@ -234,6 +267,12 @@ export default function TaskDetail() {
           <IconX width={15} height={15} /> {t('task.delete')}
         </button>
       </div>
+
+      {decomposeError && (
+        <p className="rounded-lg border border-red-800/60 bg-red-950/40 p-2.5 text-xs text-red-300">
+          {t('task.splitFailed', { error: decomposeError })}
+        </p>
+      )}
 
       <section className="card p-4">
         <h2 className="mb-2 text-sm font-semibold text-ink-300">{t('task.description')}</h2>

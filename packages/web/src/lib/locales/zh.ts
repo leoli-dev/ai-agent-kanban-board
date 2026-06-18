@@ -186,6 +186,11 @@ export const zh: Record<string, string> = {
   'task.resume': '继续运行',
   'task.model': '模型',
   'task.modelAuto': '自动（按角色）',
+  'task.split': '拆分为子任务',
+  'task.splitConfirm':
+    '让规划器把 "{title}" 拆分成更小的子任务？子任务会以暂停状态创建供你审阅，当前任务将被替换。',
+  'task.splitting': '拆分中…',
+  'task.splitFailed': '拆分失败：{error}',
   'task.pausedBadge': '已暂停',
   'task.summary': '成果总结',
   'task.testPass': '通过',

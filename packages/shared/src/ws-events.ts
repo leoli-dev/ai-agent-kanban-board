@@ -12,6 +12,7 @@ export type WsServerMessage =
   | { type: 'task.updated'; task: Task }
   | { type: 'task.deleted'; taskId: string; projectId: string }
   | { type: 'tasks.created'; projectId: string; tasks: Task[] }
+  | { type: 'task.decompose_failed'; taskId: string; projectId: string; error: string }
   | { type: 'project.updated'; project: Project }
   | { type: 'run.started'; run: AgentRun }
   | { type: 'run.updated'; run: AgentRun }
