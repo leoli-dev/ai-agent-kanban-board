@@ -37,8 +37,16 @@ export const claudeCodeAdapter: EngineAdapter = {
       'stream-json',
       '--verbose',
       '--dangerously-skip-permissions',
+      // Don't inherit the user's personal MCP servers (Gmail, Drive, browser,
+      // etc.): they're irrelevant to orchestrated coding agents and a large
+      // tool surface derails weaker local models into calling the wrong tools.
+      // With no --mcp-config, this means no MCP servers at all.
+      '--strict-mcp-config',
     ];
     for (const dir of req.addDirs) args.push('--add-dir', dir);
+    // Optional tool allowlist (variadic flag). Keeps a run focused on the core
+    // editing tools instead of every built-in.
+    if (req.allowedTools?.length) args.push('--allowedTools', ...req.allowedTools);
     if (req.systemAppend) args.push('--append-system-prompt', req.systemAppend);
     if (req.resumeSessionId) args.push('--resume', req.resumeSessionId);
 

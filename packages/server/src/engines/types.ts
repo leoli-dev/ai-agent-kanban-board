@@ -29,6 +29,10 @@ export interface SpawnRequest {
   systemAppend?: string;
   resumeSessionId?: string;
   images?: string[];
+  /** Restrict the agent to this tool allowlist (claude-code `--allowedTools`).
+   * Undefined/empty = no restriction. Used to keep weaker models focused on the
+   * core editing tools instead of the full (MCP-laden) surface. */
+  allowedTools?: string[];
 }
 
 export interface SpawnSpec {
