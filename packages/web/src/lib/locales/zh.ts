@@ -277,7 +277,7 @@ export const zh: Record<string, string> = {
   'builder.effort.codex': '传给 codex 的推理强度（model_reasoning_effort）。',
   'builder.default': '默认',
   'builder.sandbox': '沙箱',
-  'builder.sandbox.help': 'workspace-write：只能改仓库内文件（推荐）。read-only：不能改文件。danger-full-access：完全不设防。',
+  'builder.sandbox.help': 'off：不设沙箱，完整 shell + 网络（推荐；跑 dev server、无头浏览器、git 都需要）。workspace-write：只能改仓库内文件，且无网络。read-only：不能改文件。danger-full-access：显式不设防。',
   'builder.preview': '预览生成的配置',
   'builder.create': '添加模型',
 
