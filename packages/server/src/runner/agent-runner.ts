@@ -48,6 +48,12 @@ export interface RunOutcome {
   failureClass: FailureClass;
   /** True when every eligible provider for the role was exhausted. */
   blocked: boolean;
+  /**
+   * True ONLY when an outside caller killed the run (pause/delete/kill button) —
+   * NOT for watchdog kills (stuck / wall-clock). Lets the caller re-queue a
+   * user-interrupted task for free while a timeout still burns the retry budget.
+   */
+  userKilled: boolean;
   finalRun: AgentRun | null;
   attempts: AgentRun[];
 }
@@ -106,16 +112,25 @@ export class AgentRunner extends EventEmitter {
       attempts.push(attempt.run);
 
       if (attempt.terminal !== 'exit') {
-        // stuck / wall-clock / external kill: task-level concern, no provider fallback
-        return { ok: false, failureClass: 'TASK_FAIL', blocked: false, finalRun: attempt.run, attempts };
+        // stuck / wall-clock / external kill: task-level concern, no provider
+        // fallback. Only an external (user) kill re-queues for free; a watchdog
+        // timeout (stuck/wall) must burn the retry budget so it can't loop forever.
+        return {
+          ok: false,
+          failureClass: 'TASK_FAIL',
+          blocked: false,
+          userKilled: attempt.terminal === 'external',
+          finalRun: attempt.run,
+          attempts,
+        };
       }
 
       switch (attempt.failureClass) {
         case 'OK':
           this.deps.registry.markOk(profile.id);
-          return { ok: true, failureClass: 'OK', blocked: false, finalRun: attempt.run, attempts };
+          return { ok: true, failureClass: 'OK', blocked: false, userKilled: false, finalRun: attempt.run, attempts };
         case 'TASK_FAIL':
-          return { ok: false, failureClass: 'TASK_FAIL', blocked: false, finalRun: attempt.run, attempts };
+          return { ok: false, failureClass: 'TASK_FAIL', blocked: false, userKilled: false, finalRun: attempt.run, attempts };
         case 'QUOTA':
           this.deps.registry.markCooldown(profile.id, Date.now() + QUOTA_COOLDOWN_MS, 'quota/rate limit');
           this.emit('provider_down', { profile, reason: 'quota', permanent: false });
@@ -147,6 +162,7 @@ export class AgentRunner extends EventEmitter {
       ok: false,
       failureClass: finalRun?.failureClass ?? 'CRASH',
       blocked: true,
+      userKilled: false,
       finalRun,
       attempts,
     };

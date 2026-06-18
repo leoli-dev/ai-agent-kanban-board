@@ -125,6 +125,8 @@ describe('AgentRunner', () => {
     expect(outcome.ok).toBe(false);
     expect(outcome.finalRun!.status).toBe('killed');
     expect(outcome.finalRun!.resultText).toContain('wall-clock');
+    // A watchdog timeout is NOT a user kill — it must burn the retry budget.
+    expect(outcome.userKilled).toBe(false);
   }, 15_000);
 
   it('supports external kill', async () => {
@@ -139,6 +141,8 @@ describe('AgentRunner', () => {
 
     const outcome = await promise;
     expect(outcome.finalRun!.status).toBe('killed');
+    // An external kill IS a user kill — it re-queues for free, no retry burned.
+    expect(outcome.userKilled).toBe(true);
   }, 15_000);
 
   it('marks orphaned running rows as killed on recovery', async () => {

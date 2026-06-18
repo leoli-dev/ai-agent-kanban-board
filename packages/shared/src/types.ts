@@ -219,7 +219,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   defaultProjectDir: '~/Code',
   stuckThresholdMin: 10,
-  wallClockLimitMin: 60,
+  wallClockLimitMin: 30,
   maxRetries: 2,
   maxBounces: 2,
   concurrency: 2,
