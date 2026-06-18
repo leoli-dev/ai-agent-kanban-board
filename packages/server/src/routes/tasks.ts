@@ -216,6 +216,30 @@ export async function taskRoutes(app: FastifyInstance, ctx: AppContext): Promise
   });
 
   /**
+   * Re-decompose a task: send it back to the planner to be split into smaller
+   * subtasks (created paused for review). Runs in the background — the UI reacts
+   * to the resulting tasks.created / task.deleted / task.decompose_failed events.
+   */
+  app.post('/api/tasks/:id/decompose', async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const task = getTask(ctx.db, id);
+    if (!task) return reply.code(404).send({ error: 'task not found' });
+    if (ctx.runStore.listByTask(id).some((r) => r.status === 'running')) {
+      return reply.code(409).send({ error: 'task has an active agent — kill it first' });
+    }
+    if (task.status === 'done') {
+      return reply.code(422).send({ error: 'cannot split a task that is already done' });
+    }
+    if (!ctx.registry.pickForRole('planner')) {
+      return reply
+        .code(409)
+        .send({ error: 'no provider configured for the planner role — set one up in Settings' });
+    }
+    void ctx.orchestrator.decomposeTask(id);
+    return { ok: true };
+  });
+
+  /**
    * Pin (or clear) the model for this task's coder runs. The override beats
    * role selection and escalation; null restores auto-by-role.
    */

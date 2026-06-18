@@ -9,7 +9,9 @@ import { Notifier } from '../src/notify/notifier.js';
 import { Orchestrator } from '../src/orchestrator/orchestrator.js';
 import { ReportService } from '../src/reports/report-service.js';
 import { ProjectRunner } from '../src/runner/project-runner.js';
-import { updateTask } from '../src/db/task-store.js';
+import { getTask, listProjectTasks, updateTask } from '../src/db/task-store.js';
+import { toProject } from '../src/db/mappers.js';
+import { decomposeTaskIntoSubtasks } from '../src/agents/task-creator.js';
 import { scaffoldWorkspace, workspacePaths } from '../src/workspace/workspace.js';
 import { addMockProfile, makeTestCtx, scripts, type MockScript, type TestCtx } from './helpers.js';
 
@@ -717,4 +719,85 @@ describe('Orchestrator (money test)', () => {
     expect(taskStatus(f.ctx, 't1')).toBe('to_review');
     expect(fs.readFileSync(path.join(wt('t2'), 'shared.txt'), 'utf8')).toBe('from-t1');
   });
+});
+
+describe('Task decomposition', () => {
+  const projectOf = (ctx: TestCtx, projectId: string) =>
+    toProject(ctx.db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get()!);
+  const subPlan2 = {
+    subtasks: [
+      { id: 'a', title: 'Part A', description: 'do A', acceptanceCriteria: ['A works'], dependsOn: [] },
+      { id: 'b', title: 'Part B', description: 'do B', acceptanceCriteria: ['B works'], dependsOn: ['a'] },
+    ],
+  };
+
+  it('decomposeTaskIntoSubtasks replaces a task and rehangs the DAG', () => {
+    const f = makeFixture([
+      { id: 'A', deps: [] },
+      { id: 'B', deps: ['A'] },
+      { id: 'C', deps: ['B'] },
+    ]);
+    const created = decomposeTaskIntoSubtasks(
+      f.ctx.db,
+      f.ctx.hub,
+      projectOf(f.ctx, f.projectId),
+      getTask(f.ctx.db, 'B')!,
+      subPlan2,
+      { paused: true },
+    );
+
+    expect(getTask(f.ctx.db, 'B')).toBeNull(); // original gone
+    expect(created).toHaveLength(2);
+
+    const subs = listProjectTasks(f.ctx.db, f.projectId).filter((t) => t.planStepId?.startsWith('B.'));
+    expect(subs).toHaveLength(2);
+    expect(subs.every((t) => t.paused)).toBe(true);
+
+    const s1 = subs.find((t) => t.planStepId === 'B.a')!;
+    const s2 = subs.find((t) => t.planStepId === 'B.b')!;
+    expect(s1.dependsOn).toEqual(['A']); // root inherits the original's external dep
+    expect(s2.dependsOn).toEqual([s1.id]); // internal edge only
+
+    const c = getTask(f.ctx.db, 'C')!;
+    expect(c.dependsOn.sort()).toEqual([s1.id, s2.id].sort()); // dependent waits on all subtasks
+  });
+
+  it('orchestrator.decomposeTask runs the planner and replaces the task with paused subtasks', async () => {
+    const f = makeFixture([{ id: 't1', deps: [] }]);
+    // Park the project so the eval loop doesn't try to launch t1 (no coder configured).
+    f.ctx.db.update(schema.projects).set({ status: 'paused' }).where(eq(schema.projects.id, f.projectId)).run();
+    const out = path.join(workspacePaths(f.ctx.tmpDir, f.projectId).plan, 'decompose-t1.json');
+    addMockProfile(
+      f.ctx,
+      'planner',
+      scripts.success('SUBTASKS_READY', { writeFiles: [{ path: out, content: JSON.stringify(subPlan2) }] }),
+    );
+
+    await f.orchestrator.decomposeTask('t1');
+
+    expect(getTask(f.ctx.db, 't1')).toBeNull();
+    const subs = listProjectTasks(f.ctx.db, f.projectId);
+    expect(subs).toHaveLength(2);
+    expect(subs.every((t) => t.paused && t.status === 'backlog')).toBe(true);
+    expect(subs.map((t) => t.planStepId).sort()).toEqual(['t1.a', 't1.b']);
+  }, 30_000);
+
+  it('decomposeTask leaves the task intact and notifies when the sub-plan is invalid', async () => {
+    const f = makeFixture([{ id: 't1', deps: [] }]);
+    f.ctx.db.update(schema.projects).set({ status: 'paused' }).where(eq(schema.projects.id, f.projectId)).run();
+    const out = path.join(workspacePaths(f.ctx.tmpDir, f.projectId).plan, 'decompose-t1.json');
+    // Only ONE subtask — fails SubtaskPlanSchema.min(2), even after the repair round.
+    const invalid = { subtasks: [{ id: 'x', title: 'x', description: 'x', acceptanceCriteria: [], dependsOn: [] }] };
+    addMockProfile(
+      f.ctx,
+      'planner',
+      scripts.success('SUBTASKS_READY', { writeFiles: [{ path: out, content: JSON.stringify(invalid) }] }),
+    );
+
+    await f.orchestrator.decomposeTask('t1');
+
+    expect(getTask(f.ctx.db, 't1')).not.toBeNull(); // original survives
+    const notifs = f.ctx.db.select().from(schema.notifications).all();
+    expect(notifs.some((n) => n.type === 'task_failed')).toBe(true);
+  }, 30_000);
 });

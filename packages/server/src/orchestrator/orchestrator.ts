@@ -3,8 +3,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import type { ModelTier, Project, Task } from '@akb/shared';
+import { SUBTASK_JSON_CONTRACT, SubtaskPlanSchema, type ModelTier, type Project, type Task } from '@akb/shared';
 import type { ProviderRegistry } from '../providers/registry.js';
+import { decomposeTaskIntoSubtasks } from '../agents/task-creator.js';
 import { SAFETY_TICK_MS } from '../config.js';
 import { schema, type Db } from '../db/index.js';
 import { toProject } from '../db/mappers.js';
@@ -38,6 +39,7 @@ const CODER_CONTRACT = prompt('coder');
 const DEBUGGER_CONTRACT = prompt('debugger');
 const REVIEWER_CONTRACT = prompt('reviewer');
 const TESTER_CONTRACT = prompt('tester');
+const DECOMPOSE_CONTRACT = prompt('decompose');
 
 const ReviewVerdict = z.object({
   verdict: z.enum(['approve', 'changes_requested']),
@@ -118,6 +120,116 @@ export class Orchestrator {
     const dir = this.worktreeDir(project, task.id);
     if (fs.existsSync(dir)) await removeWorktree(project.targetRepoPath, dir);
     await deleteBranch(project.targetRepoPath, this.taskBranch(project, task));
+  }
+
+  /**
+   * Send one task back to the planner to be split into several smaller
+   * subtasks, then replace it in the DAG (subtasks created paused for review).
+   * Runs in the background; the caller (route) returns immediately and the UI
+   * reacts to the resulting tasks.created / task.deleted / task.decompose_failed
+   * WS events. Guards are also enforced by the route.
+   */
+  async decomposeTask(taskId: string): Promise<void> {
+    const task = getTask(this.deps.db, taskId);
+    if (!task) return;
+    if (this.activeTasks.has(taskId)) return; // a run is in flight — let it settle
+    const projectRow = this.deps.db
+      .select()
+      .from(schema.projects)
+      .where(eq(schema.projects.id, task.projectId))
+      .get();
+    if (!projectRow) return;
+    const project = toProject(projectRow);
+    const ws = workspacePaths(this.deps.workspacesDir, project.id);
+    const outPath = path.join(ws.plan, `decompose-${taskId}.json`);
+
+    // Fence the task so the eval loop can't launch it during the planner run;
+    // remember the prior flag to restore it if the split fails.
+    const wasPaused = task.paused;
+    updateTask(this.deps.db, this.deps.hub, taskId, { paused: 1 });
+
+    const fail = async (reason: string): Promise<void> => {
+      updateTask(this.deps.db, this.deps.hub, taskId, { paused: wasPaused ? 1 : 0 });
+      this.deps.hub.publish(`board:${project.id}`, {
+        type: 'task.decompose_failed',
+        taskId,
+        projectId: project.id,
+        error: reason,
+      });
+      await this.deps.notifier.notify(
+        'task_failed',
+        `Split failed: ${task.title}`,
+        reason.slice(0, 500),
+        project.id,
+      );
+    };
+
+    try {
+      const intro = `Split this ONE task into smaller subtasks. Write the subtask plan JSON to: ${outPath}
+Schema:
+${SUBTASK_JSON_CONTRACT}`;
+      const runOnce = (extra = '') =>
+        this.deps.runner.run({
+          role: 'planner',
+          prompt: `${intro}${extra}
+
+# Task to split: ${task.title}
+
+${task.description}
+
+## Acceptance criteria (the subtasks must collectively satisfy ALL of these)
+${task.acceptanceCriteria.map((c) => `- ${c}`).join('\n') || '- (none specified)'}
+
+## Project
+${project.name}
+${project.prompt.slice(0, 1000)}
+
+## Environment
+- Project workspace (write the subtask JSON here): ${ws.root}
+- Target repository (read-only): ${project.targetRepoPath}`,
+          cwd: project.targetRepoPath,
+          logDir: ws.logs,
+          projectId: project.id,
+          addDirs: [ws.root],
+          systemAppend: DECOMPOSE_CONTRACT,
+          // Planning is quick; cap it well under a coding run.
+          timeouts: { stuckMs: 5 * 60_000, wallClockMs: 20 * 60_000 },
+        });
+
+      let outcome = await runOnce();
+      const parse = (): ReturnType<typeof SubtaskPlanSchema.parse> | null => {
+        try {
+          return SubtaskPlanSchema.parse(JSON.parse(fs.readFileSync(outPath, 'utf8')));
+        } catch {
+          return null;
+        }
+      };
+      let subPlan = outcome.ok ? parse() : null;
+      if (!subPlan && outcome.ok) {
+        // One repair round: the run finished but the file was missing/invalid.
+        outcome = await runOnce(
+          `\n\nNOTE: the previous attempt did not leave a valid subtask JSON at the path above (need at least 2 subtasks). Write it correctly now.`,
+        );
+        subPlan = outcome.ok ? parse() : null;
+      }
+      if (!subPlan) {
+        await fail(
+          outcome.ok
+            ? 'the planner did not produce a valid subtask plan (need at least 2 subtasks)'
+            : 'the planner run failed (provider exhausted or timed out)',
+        );
+        return;
+      }
+
+      const fresh = getTask(this.deps.db, taskId);
+      if (!fresh) return; // deleted meanwhile
+      decomposeTaskIntoSubtasks(this.deps.db, this.deps.hub, project, fresh, subPlan, { paused: true });
+      // The original task is gone; reclaim its worktree/branch.
+      await this.cleanupTaskWorktree(project, fresh).catch(() => {});
+      this.nudge();
+    } catch (err) {
+      await fail(String(err));
+    }
   }
 
   start(): void {

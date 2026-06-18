@@ -1,6 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, gt, or, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
-import { PlanDocSchema, type PlanDoc, type Task } from '@akb/shared';
+import { PlanDocSchema, type PlanDoc, type Project, type SubtaskPlan, type Task } from '@akb/shared';
 import { schema, type Db } from '../db/index.js';
 import { toTask } from '../db/mappers.js';
 import type { WsHub } from '../ws/hub.js';
@@ -59,6 +59,134 @@ export function createTasksFromPlan(
 
   hub.publish(`board:${projectId}`, { type: 'tasks.created', projectId, tasks: created });
   hub.publish('global', { type: 'tasks.created', projectId, tasks: created });
+  return created;
+}
+
+/**
+ * Replace ONE task with the subtasks the planner split it into, rehanging the
+ * surrounding DAG in place: the subtasks' internal dependsOn is honored, the
+ * original task's external dependencies are inherited by the subtask roots, and
+ * everything that depended on the original now depends on ALL subtasks (so a
+ * dependent still waits for the whole unit). Atomic; emits task.deleted (the
+ * original) + tasks.created (the subtasks). Throws on schema/cycle problems.
+ */
+export function decomposeTaskIntoSubtasks(
+  db: Db,
+  hub: WsHub,
+  project: Project,
+  original: Task,
+  subPlan: SubtaskPlan,
+  opts: { paused: boolean },
+): Task[] {
+  // Reuse the plan validator/topo-sort (rejects cycles + unknown dep ids).
+  const ordered = topoSort({ title: 'decompose', summary: 'decompose', steps: subPlan.subtasks });
+
+  const externalDeps = db
+    .select()
+    .from(schema.taskDependencies)
+    .where(eq(schema.taskDependencies.taskId, original.id))
+    .all()
+    .map((d) => d.dependsOnTaskId);
+  const dependents = db
+    .select()
+    .from(schema.taskDependencies)
+    .where(eq(schema.taskDependencies.dependsOnTaskId, original.id))
+    .all()
+    .map((d) => d.taskId);
+
+  const now = Date.now();
+  const idByStep = new Map<string, string>(ordered.map((s) => [s.id, nanoid(10)]));
+  const created: Task[] = [];
+
+  db.transaction((tx) => {
+    // Make room: shift tasks ordered after the original down by (n-1) so the
+    // subtasks slot into the original's position in board order.
+    const shift = ordered.length - 1;
+    if (shift > 0) {
+      tx.update(schema.tasks)
+        .set({ orderIndex: sql`${schema.tasks.orderIndex} + ${shift}` })
+        .where(
+          and(
+            eq(schema.tasks.projectId, project.id),
+            gt(schema.tasks.orderIndex, original.orderIndex),
+          ),
+        )
+        .run();
+    }
+
+    ordered.forEach((step, i) => {
+      const id = idByStep.get(step.id)!;
+      // Namespace the plan step id so task branches / commit prefixes stay unique.
+      const planStepId = `${original.planStepId ?? original.id}.${step.id}`;
+      tx.insert(schema.tasks)
+        .values({
+          id,
+          projectId: project.id,
+          planStepId,
+          title: step.title,
+          description: step.description,
+          acceptanceCriteriaJson: JSON.stringify(step.acceptanceCriteria),
+          status: 'backlog',
+          orderIndex: original.orderIndex + i,
+          paused: opts.paused ? 1 : 0,
+          modelOverrideId: original.modelOverrideId,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+
+      const deps: string[] = [];
+      // Internal edges between subtasks.
+      for (const depStep of step.dependsOn) {
+        const depId = idByStep.get(depStep);
+        if (!depId) continue;
+        tx.insert(schema.taskDependencies).values({ taskId: id, dependsOnTaskId: depId }).run();
+        deps.push(depId);
+      }
+      // Roots (no internal dep) inherit the original task's external deps.
+      if (step.dependsOn.length === 0) {
+        for (const ext of externalDeps) {
+          tx.insert(schema.taskDependencies).values({ taskId: id, dependsOnTaskId: ext }).run();
+          deps.push(ext);
+        }
+      }
+      created.push(
+        toTask(tx.select().from(schema.tasks).where(eq(schema.tasks.id, id)).get()!, deps),
+      );
+    });
+
+    // Re-point everything that depended on the original onto all subtasks.
+    for (const dependentId of dependents) {
+      tx.delete(schema.taskDependencies)
+        .where(
+          and(
+            eq(schema.taskDependencies.taskId, dependentId),
+            eq(schema.taskDependencies.dependsOnTaskId, original.id),
+          ),
+        )
+        .run();
+      for (const newId of idByStep.values()) {
+        tx.insert(schema.taskDependencies).values({ taskId: dependentId, dependsOnTaskId: newId }).run();
+      }
+    }
+
+    // Drop the original task and every dependency row touching it.
+    tx.delete(schema.tasks).where(eq(schema.tasks.id, original.id)).run();
+    tx.delete(schema.taskDependencies)
+      .where(
+        or(
+          eq(schema.taskDependencies.taskId, original.id),
+          eq(schema.taskDependencies.dependsOnTaskId, original.id),
+        ),
+      )
+      .run();
+  });
+
+  // Publish after commit so listeners never see a rolled-back state.
+  hub.publish(`board:${project.id}`, { type: 'task.deleted', taskId: original.id, projectId: project.id });
+  hub.publish('global', { type: 'task.deleted', taskId: original.id, projectId: project.id });
+  hub.publish(`board:${project.id}`, { type: 'tasks.created', projectId: project.id, tasks: created });
+  hub.publish('global', { type: 'tasks.created', projectId: project.id, tasks: created });
   return created;
 }
 
