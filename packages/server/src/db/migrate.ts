@@ -154,6 +154,7 @@ CREATE TABLE IF NOT EXISTS settings (
   addColumnIfMissing(sqlite, 'projects', 'base_commit', 'TEXT');
   addColumnIfMissing(sqlite, 'tasks', 'paused', 'INTEGER NOT NULL DEFAULT 0');
   addColumnIfMissing(sqlite, 'tasks', 'model_override_id', 'TEXT');
+  addColumnIfMissing(sqlite, 'tasks', 'decomposing', 'INTEGER NOT NULL DEFAULT 0');
 }
 
 /** SQLite has no `ADD COLUMN IF NOT EXISTS`; check the table shape first. */

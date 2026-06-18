@@ -48,9 +48,11 @@ export function formatClock(ts: number): string {
 }
 
 /** The task's step number in the plan flow — from its plan step id, else its
- * topological order. Returns just the number as a string. */
+ * topological order. Subtasks from a split carry a dotted id (e.g.
+ * "step-7.sub-3") and render as "7.3" so their order is visible. */
 export function stepNumber(task: { planStepId: string | null; orderIndex: number }): string {
-  return task.planStepId?.match(/(\d+)/)?.[1] ?? String(task.orderIndex + 1);
+  const nums = task.planStepId?.match(/\d+/g);
+  return nums?.length ? nums.join('.') : String(task.orderIndex + 1);
 }
 
 export function formatCost(usd: number | null | undefined): string {

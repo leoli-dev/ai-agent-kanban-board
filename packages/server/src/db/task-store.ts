@@ -53,6 +53,7 @@ export function updateTask(
     blockedReason: string | null;
     description: string;
     paused: number;
+    decomposing: number;
     modelOverrideId: string | null;
   }>,
 ): Task | null {

@@ -116,6 +116,10 @@ export interface Task {
   blockedReason: string | null;
   /** Held by the user — the orchestrator skips it until resumed. */
   paused: boolean;
+  /** A planner "split into subtasks" run is in flight for this task. Persisted
+   * so the "splitting…" state survives navigation/reload; cleared on failure
+   * (on success the task is replaced by its subtasks). */
+  decomposing: boolean;
   /** Pinned provider profile for this task's coder runs; null = auto by role. */
   modelOverrideId: string | null;
   dependsOn: string[];

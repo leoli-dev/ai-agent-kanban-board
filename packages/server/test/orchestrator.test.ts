@@ -816,7 +816,9 @@ describe('Task decomposition', () => {
 
     await f.orchestrator.decomposeTask('t1');
 
-    expect(getTask(f.ctx.db, 't1')).not.toBeNull(); // original survives
+    const survivor = getTask(f.ctx.db, 't1');
+    expect(survivor).not.toBeNull(); // original survives
+    expect(survivor!.decomposing).toBe(false); // the transient flag is cleared
     const notifs = f.ctx.db.select().from(schema.notifications).all();
     expect(notifs.some((n) => n.type === 'task_failed')).toBe(true);
   }, 30_000);

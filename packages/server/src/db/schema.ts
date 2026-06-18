@@ -74,6 +74,8 @@ export const tasks = sqliteTable('tasks', {
   blockedReason: text('blocked_reason'),
   /** 1 = held by the user: the orchestrator skips it until resumed. */
   paused: integer('paused').notNull().default(0),
+  /** 1 = a planner "split into subtasks" run is in flight for this task. */
+  decomposing: integer('decomposing').notNull().default(0),
   /** Pin a specific provider profile for this task's coder runs (user override
    * when the auto-picked model is too slow); null = role-based selection. */
   modelOverrideId: text('model_override_id'),

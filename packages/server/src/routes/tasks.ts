@@ -230,6 +230,9 @@ export async function taskRoutes(app: FastifyInstance, ctx: AppContext): Promise
     if (task.status === 'done') {
       return reply.code(422).send({ error: 'cannot split a task that is already done' });
     }
+    if (task.decomposing) {
+      return reply.code(409).send({ error: 'this task is already being split' });
+    }
     if (!ctx.registry.pickForRole('planner')) {
       return reply
         .code(409)

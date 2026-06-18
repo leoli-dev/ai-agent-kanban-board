@@ -143,13 +143,18 @@ export class Orchestrator {
     const ws = workspacePaths(this.deps.workspacesDir, project.id);
     const outPath = path.join(ws.plan, `decompose-${taskId}.json`);
 
-    // Fence the task so the eval loop can't launch it during the planner run;
-    // remember the prior flag to restore it if the split fails.
+    // Fence the task so the eval loop can't launch it during the planner run,
+    // and mark it decomposing (persisted, so the UI's "splitting…" state
+    // survives navigation/reload). Remember the prior pause flag to restore it
+    // if the split fails.
     const wasPaused = task.paused;
-    updateTask(this.deps.db, this.deps.hub, taskId, { paused: 1 });
+    updateTask(this.deps.db, this.deps.hub, taskId, { paused: 1, decomposing: 1 });
 
     const fail = async (reason: string): Promise<void> => {
-      updateTask(this.deps.db, this.deps.hub, taskId, { paused: wasPaused ? 1 : 0 });
+      updateTask(this.deps.db, this.deps.hub, taskId, {
+        paused: wasPaused ? 1 : 0,
+        decomposing: 0,
+      });
       this.deps.hub.publish(`board:${project.id}`, {
         type: 'task.decompose_failed',
         taskId,
@@ -237,6 +242,17 @@ ${project.prompt.slice(0, 1000)}
     const orphaned = this.deps.db.select().from(schema.tasks).where(eq(schema.tasks.status, 'wip')).all();
     for (const t of orphaned) {
       updateTask(this.deps.db, this.deps.hub, t.id, { status: 'backlog' });
+    }
+    // A split that was in flight when the process died is abandoned: clear the
+    // flag so the task isn't stuck showing "splitting…" forever. It stays paused
+    // (set during the split) so it won't auto-run — re-trigger the split or resume.
+    const orphanedSplits = this.deps.db
+      .select()
+      .from(schema.tasks)
+      .where(eq(schema.tasks.decomposing, 1))
+      .all();
+    for (const t of orphanedSplits) {
+      updateTask(this.deps.db, this.deps.hub, t.id, { decomposing: 0 });
     }
     this.timer = setInterval(() => this.nudge(), SAFETY_TICK_MS);
     this.timer.unref?.();

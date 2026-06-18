@@ -52,8 +52,18 @@ export function TaskCard({
       {liveModel && (
         <p className="mt-1.5 truncate font-mono text-[10px] text-teal-300/90">▸ {liveModel}</p>
       )}
-      {(projectName || task.retryCount > 0 || task.bounceCount > 0 || task.blockedReason) && (
+      {(projectName ||
+        task.retryCount > 0 ||
+        task.bounceCount > 0 ||
+        task.blockedReason ||
+        task.decomposing) && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {task.decomposing && (
+            <span className="flex items-center gap-1 rounded bg-accent-500/15 px-1.5 py-0.5 text-[10px] text-accent-300">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-400" />
+              {t('task.splitting')}
+            </span>
+          )}
           {projectName && (
             <span className="rounded bg-ink-800 px-1.5 py-0.5 text-[10px] text-ink-400">
               {projectName}

@@ -76,6 +76,7 @@ export function toTask(r: Row<typeof schema.tasks>, dependsOn: string[]): Task {
     bounceCount: r.bounceCount,
     blockedReason: r.blockedReason,
     paused: r.paused === 1,
+    decomposing: r.decomposing === 1,
     modelOverrideId: r.modelOverrideId,
     dependsOn,
     createdAt: r.createdAt,
