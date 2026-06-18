@@ -4,6 +4,9 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // Single-user, self-hosted app served over localhost/LAN: one ~200 kB-gzip
+  // bundle loads instantly, so the default 500 kB warning isn't meaningful here.
+  build: { chunkSizeWarningLimit: 1000 },
   server: {
     host: true,
     port: 5173,
