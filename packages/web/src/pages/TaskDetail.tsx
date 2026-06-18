@@ -17,7 +17,6 @@ export default function TaskDetail() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [decomposing, setDecomposing] = useState(false);
   const [decomposeError, setDecomposeError] = useState<string | null>(null);
 
   const { data: task, isLoading, isError, error, refetch } = useQuery({
@@ -61,8 +60,9 @@ export default function TaskDetail() {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       navigate(`/projects/${msg.projectId}/board`);
     }
+    // The persisted `decomposing` flag clears via the task.updated event; we
+    // just surface the reason here.
     if (msg.type === 'task.decompose_failed' && msg.taskId === taskId) {
-      setDecomposing(false);
       setDecomposeError(msg.error);
     }
   });
@@ -104,7 +104,9 @@ export default function TaskDetail() {
     mutationFn: () => api.post(`/api/tasks/${taskId}/decompose`),
     onSuccess: () => {
       setDecomposeError(null);
-      setDecomposing(true); // planner runs in the background; WS replaces the task
+      // The server has already marked the task decomposing; refetch so the
+      // persisted "splitting…" state shows immediately.
+      queryClient.invalidateQueries({ queryKey: ['task', taskId] });
     },
     onError: (e) => setDecomposeError(e instanceof Error ? e.message : String(e)),
   });
@@ -136,9 +138,15 @@ export default function TaskDetail() {
           <span className={`rounded-md px-2.5 py-1 text-xs font-medium ${taskStatusStyle[task.status]}`}>
             {t(`task.${task.status}`)}
           </span>
-          {task.paused && !activeRun && (
+          {task.paused && !activeRun && !task.decomposing && (
             <span className="rounded-md bg-ink-800 px-2.5 py-1 text-xs font-medium text-ink-400">
               ⏸ {t('task.pausedBadge')}
+            </span>
+          )}
+          {task.decomposing && (
+            <span className="flex items-center gap-1.5 rounded-md bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-200">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-accent-400" />
+              {t('task.splitting')}
             </span>
           )}
           {activeRun && (
@@ -189,7 +197,13 @@ export default function TaskDetail() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {activeRun ? (
+        {task.decomposing ? (
+          // A split is in flight — the planner is producing subtasks in the
+          // background. Other actions are hidden until it finishes or fails.
+          <span className="btn btn-ghost cursor-default px-4 py-2 text-sm opacity-70">
+            <IconPlus width={15} height={15} /> {t('task.splitting')}
+          </span>
+        ) : activeRun ? (
           <>
             <button
               onClick={() => pause.mutate()}
@@ -226,17 +240,15 @@ export default function TaskDetail() {
           )
         )}
         {/* Send a too-big task back to the planner to split into smaller subtasks. */}
-        {!activeRun && task.status !== 'done' && (
+        {!task.decomposing && !activeRun && task.status !== 'done' && (
           <button
             onClick={() => {
-              if (decomposing) return;
               if (confirm(t('task.splitConfirm', { title: task.title }))) decompose.mutate();
             }}
-            disabled={decompose.isPending || decomposing}
+            disabled={decompose.isPending}
             className="btn btn-ghost px-4 py-2 text-sm"
           >
-            <IconPlus width={15} height={15} />{' '}
-            {decomposing ? t('task.splitting') : t('task.split')}
+            <IconPlus width={15} height={15} /> {t('task.split')}
           </button>
         )}
         {/* Pin the model for this task's coder runs — step in when the auto one is too slow. */}
