@@ -27,7 +27,7 @@ export const PLAN_JSON_CONTRACT = `{
     {
       "id": "step-1",
       "title": "imperative step title",
-      "description": "detailed instructions a coding sub-agent can execute independently",
+      "description": "detailed instructions for ONE focused unit of work a coding sub-agent can execute AND self-verify in well under 30 minutes — split bigger work into more steps; never bundle multiple deliverables into one",
       "acceptanceCriteria": ["verifiable criterion", "..."],
       "dependsOn": ["ONLY ids of steps whose output this step strictly needs — leave empty for independent steps, they run in parallel"],
       "complexity": "low | medium | high"

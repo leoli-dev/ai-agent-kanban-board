@@ -613,6 +613,26 @@ describe('Orchestrator (money test)', () => {
     expect(notifications.some((n) => n.type === 'task_failed')).toBe(true);
   }, 30_000);
 
+  it('wall-clock timeouts burn the retry budget and eventually fail (no endless loop)', async () => {
+    // Regression: a wall-clock kill shares status 'killed' with a user kill, but
+    // must NOT be treated as one — otherwise it re-queues for free forever,
+    // looping ~every wall-clock window and never finishing or failing.
+    const f = makeFixture([{ id: 't1', deps: [] }]);
+    // Short wall clock (~600ms), comfortably under the stuck timer so the WALL
+    // path fires (status 'killed'), not the stuck path (status 'stuck').
+    f.ctx.settings.update({ maxRetries: 1, wallClockLimitMin: 0.01, stuckThresholdMin: 0.1 });
+    addMockProfile(f.ctx, 'coder', scripts.stall());
+
+    f.orchestrator.start();
+    await waitFor(() => taskStatus(f.ctx, 't1') === 'failed');
+    f.orchestrator.stop();
+
+    const task = f.ctx.db.select().from(schema.tasks).where(eq(schema.tasks.id, 't1')).get()!;
+    expect(task.retryCount).toBe(1); // the timeout consumed the budget
+    const notifications = f.ctx.db.select().from(schema.notifications).all();
+    expect(notifications.some((n) => n.type === 'task_failed')).toBe(true);
+  }, 30_000);
+
   it('runs tasks in isolated worktrees — a dirty user checkout never blocks', async () => {
     const f = makeFixture([{ id: 't1', deps: [] }]);
     addMockProfile(f.ctx, 'coder', scripts.success());

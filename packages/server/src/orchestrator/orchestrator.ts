@@ -387,7 +387,10 @@ export class Orchestrator {
 
       // User-initiated kill (pause, delete, kill button): re-queue without
       // burning the retry budget. The task stays in backlog until resumed.
-      if (outcome.finalRun?.status === 'killed') {
+      // NOTE: a wall-clock/stuck watchdog kill is NOT a user kill — it falls
+      // through to handleTaskFailure below so it consumes a retry and can
+      // eventually fail, instead of re-queuing into an endless ~wall-clock loop.
+      if (outcome.userKilled) {
         const still = getTask(this.deps.db, task.id);
         if (still) updateTask(this.deps.db, this.deps.hub, task.id, { status: 'backlog' });
         return;
